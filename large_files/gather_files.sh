@@ -136,7 +136,9 @@ start_download https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.5/M
 # Ensembl GFF3 data
 GFF3_ORIGINAL="Homo_sapiens.GRCh38.116.chr.gff3.gz"
 GFF3_chrM_RENAMED="Homo_sapiens.GRCh38.116.MTtoM.gff3.gz"
-start_download https://ftp.ensembl.org/pub/release-116/vertebrates/gff3/homo_sapiens/Homo_sapiens.GRCh38.116.chr.gff3.gz
+# Original URL returned HTTP 404:
+# start_download https://ftp.ensembl.org/pub/release-116/vertebrates/gff3/homo_sapiens/Homo_sapiens.GRCh38.116.chr.gff3.gz
+start_download "https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/Homo_sapiens.GRCh38.116.chr.gff3.gz" "${GFF3_ORIGINAL}"
 
 # Jax lab file for phenotype matching
 start_download https://github.com/obophenotype/human-phenotype-ontology/releases/download/v2026-02-16/hp.obo
@@ -146,9 +148,13 @@ start_download https://github.com/obophenotype/human-phenotype-ontology/releases
 # mitochondrial annotations
 start_download https://www.mitomap.org/downloads/mitotip_scores.txt
 
-start_download "https://mitimpact.mcb2lab.org/cdn/nAPOGEE_v1.0.0.txt.zip"
+# Original URL returned HTTP 404:
+# start_download "https://mitimpact.mcb2lab.org/cdn/nAPOGEE_v1.0.0.txt.zip"
+start_download "https://web.archive.org/web/20260330072006id_/https://mitimpact.mcb2lab.org/cdn/nAPOGEE_v1.0.0.txt.zip" "nAPOGEE_v1.0.0.txt.zip"
 
-start_download "https://mitimpact.mcb2lab.org/cdn/MitImpact_db_3.1.3.txt.zip"
+# Original URL returned HTTP 404:
+# start_download "https://mitimpact.mcb2lab.org/cdn/MitImpact_db_3.1.3.txt.zip"
+start_download "https://web.archive.org/web/20251225062724id_/https://mitimpact.mcb2lab.org/cdn/MitImpact_db_3.1.3.txt.zip" "MitImpact_db_3.1.3.txt.zip"
 
 # AlphaMissense raw data
 AM="AlphaMissense_hg38.tsv.gz"
