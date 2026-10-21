@@ -36,6 +36,7 @@ from talos.models import (
     translate_category,
 )
 from talos.moi_tests import MOIRunner
+from talos.static_values import get_evidence_date
 from talos.utils import (
     GeneDict,
     annotate_variant_dates_using_prior_results,
@@ -495,10 +496,12 @@ def main(
             )
 
         # create the full final output file
+        evidence_date = get_evidence_date()
         results_meta = ResultMeta(
             family_breakdown=count_families(ped),
             panels=panelapp.metadata,
             version=__version__,
+            evidence_date=evidence_date,
         )
 
         # create a shell to store results in, adds participant metadata

@@ -27,6 +27,11 @@
           "type": "string",
           "description": "Large files directory"
         },
+        "evidence_date": {
+          "type": ["string", "null"],
+          "format": "date",
+          "description": "Optional retrospective ClinVar cutoff in YYYY-MM-DD format. Omit to use current evidence."
+        },
         "ref_genome": {
           "type": "string",
           "description": "Reference genome, default is in large_files."
