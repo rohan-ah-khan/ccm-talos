@@ -26,16 +26,24 @@ workflow TALOS {
     ch_gen2phen = channel.fromPath(params.gen2phen, checkIfExists: true).first()
     ch_phenio = channel.fromPath(params.phenio_db, checkIfExists: true).first()
 
-    // current year-month as a String, used to prompt for up to date resource updates
+    def evidence_date = params.evidence_date ? params.evidence_date.toString() : null
+    if (evidence_date) {
+        try {
+            java.time.LocalDate.parse(evidence_date)
+        } catch (java.time.format.DateTimeParseException ignored) {
+            error "--evidence_date must be a real date in YYYY-MM-DD format; received '${evidence_date}'"
+        }
+    }
     def current_month = new java.util.Date().format('yyyy-MM')
+    def evidence_month = evidence_date ? evidence_date.substring(0, 7) : current_month
     def timestamp = new java.util.Date().format('yyyy-MM-dd')
 
-    // check if clinvar and panelapp data exist using the timestamp
-    String current_clinvarbitration_all = "${params.processed_annotations}/clinvarbitration_${current_month}.ht"
-    String current_clinvarbitration_pm5 = "${params.processed_annotations}/clinvarbitration_${current_month}.pm5.ht"
+    // check that the requested ClinVar and current PanelApp resources exist
+    String current_clinvarbitration_all = "${params.processed_annotations}/clinvarbitration_${evidence_month}.ht"
+    String current_clinvarbitration_pm5 = "${params.processed_annotations}/clinvarbitration_${evidence_month}.pm5.ht"
 
     if (!file(current_clinvarbitration_pm5).exists()) {
-        println "ClinvArbitration data for this month (${current_clinvarbitration_pm5}) doesn't exist, run the Talos Prep workflow"
+        println "ClinvArbitration data for this evidence month (${current_clinvarbitration_pm5}) doesn't exist, run the Talos Prep workflow"
         exit 1
     }
 
