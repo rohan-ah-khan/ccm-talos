@@ -8,13 +8,75 @@ POLL_INTERVAL=1
 SESSION_NAME="download_manager"
 WINDOW_NAME="Downloads"
 TMX_WINDOW_ID=""
-declare -a DOWNLOAD_TARGETS=()
+THIS_MONTH=$(date '+%Y-%m')
+
+REQUIRED_FILES=(
+  "AlphaMissense_hg38.tsv.gz"
+  "genes_to_phenotype.txt"
+  "gnomad_4.1_region_merged_GRCh38_whole_genome"
+  "Homo_sapiens.GRCh38.116.chr.gff3.gz"
+  "Homo_sapiens.GRCh38.116.MTtoM.gff3.gz"
+  "hp.obo"
+  "MANE.GRCh38.v1.5.ensembl_genomic.gtf.gz"
+  "MANE.GRCh38.v1.5.summary.txt.gz"
+  "MitImpact_db_3.1.3.txt.zip"
+  "mitotip_scores.txt"
+  "nAPOGEE_v1.0.0.txt.zip"
+  "noncoding.sort.hg38.bed"
+  "phenio.db"
+  "ref.fa"
+  "ref.fa.fai"
+  "submissions_${THIS_MONTH}.txt.gz"
+  "SVAFotate_reduced_gnomAD.bed.gz"
+  "SVAFotate_SV_popAFs.GRCh38.v4.1.bed.gz"
+  "variants_${THIS_MONTH}.txt.gz"
+)
+
+check_required_files() {
+  local failed=0
+  local path
+
+  for path in "${REQUIRED_FILES[@]}"; do
+    if [ ! -s "$path" ]; then
+      echo "[INCOMPLETE] Missing or empty: $path"
+      failed=1
+    fi
+  done
+
+  for path in ./*.part; do
+    if [ -e "$path" ]; then
+      echo "[INCOMPLETE] Partial download: ${path#./}"
+      failed=1
+    fi
+  done
+
+  if [ "$failed" -eq 0 ]; then
+    echo "[SUCCESS] All required Talos resources are present."
+    return 0
+  fi
+
+  echo "[INCOMPLETE] Run $(basename "$0") again to resume the remaining downloads."
+  return 1
+}
+
+if ! command -v samtools >/dev/null 2>&1; then
+  echo "[ERROR] samtools is not available. Load the samtools module before running this script."
+  exit 1
+fi
 
 if [ ! -z "$TMX" ] && [ -z "$TMUX" ]; then
   # tmux installed, but not in a tmux session. restart in tmux.
-  tmux new-session -d -s "$SESSION_NAME" sh "$0" "$@"
+  tmux new-session -d -s "$SESSION_NAME" /usr/bin/env PATH="$PATH" bash "$0" "$@"
   tmux attach-session -t "$SESSION_NAME"
-  exit 0
+
+  # If the user detached manually, leave the running download session alone.
+  if $TMX has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "[INFO] Downloads are still running in tmux session: $SESSION_NAME"
+    exit 0
+  fi
+
+  check_required_files
+  exit $?
 fi
 
 cleanup() {
@@ -49,9 +111,6 @@ start_download() {
   # We keep resume ability by always resuming (-C -) against the .part file and only mv to final name on success.
   local final="$output"
   local part_file="${final}.part"
-
-  # Record expected final file for later summary (avoid duplicates)
-  DOWNLOAD_TARGETS+=("$final")
 
   # If the final file already exists, skip (assume complete). Could add checksum logic here if desired.
   if [ -f "$final" ]; then
@@ -178,8 +237,6 @@ start_download "https://storage.googleapis.com/gcp-public-data--broad-references
 # This is the same MANE release as the summary file above, so the gene symbols agree with RunHailFilteringSv
 start_download "https://ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/release_1.5/MANE.GRCh38.v1.5.ensembl_genomic.gtf.gz"
 
-THIS_MONTH=$(date '+%Y-%m')
-
 submission_summary="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/submission_summary.txt.gz"
 variant_summary="https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
 
@@ -207,6 +264,11 @@ if [ ! -f "${GRCh38_decompressed}" ] && [ -f "${GRCh38}" ]; then
     gunzip ${GRCh38}
 fi
 
+if [ -s "${GRCh38_decompressed}" ] && [ ! -s "${GRCh38_decompressed}.fai" ]; then
+    echo "Indexing reference Fasta"
+    samtools faidx "${GRCh38_decompressed}"
+fi
+
 # same for the phenio files
 if [ ! -f "${DECOMPRESSED_PHENIO}" ] && [ -f "${COMPRESSED_PHENIO}" ]; then
     echo "Decompressing Phenio.db"
@@ -219,18 +281,4 @@ if [ ! -f "${GFF3_chrM_RENAMED}" ] && [ -f "${GFF3_ORIGINAL}" ]; then
     gunzip -c "${GFF3_ORIGINAL}" | sed 's/^MT/M/' | gzip > "${GFF3_chrM_RENAMED}"
 fi
 
-# Final status summary
-summary_fail=0
-script_name_summary="$(basename "$0")"
-for target in "${DOWNLOAD_TARGETS[@]}"; do
-  if [ ! -f "$target" ]; then
-    echo "[MISSING] $target"
-    summary_fail=$((summary_fail+1))
-  fi
-done
-
-if [ $summary_fail -eq 0 ]; then
-  echo "[SUCCESS] All ${#DOWNLOAD_TARGETS[@]} downloads completed successfully."
-else
-  echo "[SUMMARY] $summary_fail of ${#DOWNLOAD_TARGETS[@]} downloads missing. Restart ${script_name_summary} to gracefully resume."
-fi
+check_required_files

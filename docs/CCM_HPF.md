@@ -25,10 +25,20 @@ additional launcher scripts and executable symlinks are not required.
 
 ## Setup
 
-Clone the CCM Talos repository on HPF:
+Choose a Talos working directory on HPF, create the runtime directories, and
+clone the CCM Talos repository inside it:
 
 ```bash
-git clone https://github.com/rohan-ah-khan/ccm-talos
+cd /path/to/talos
+
+mkdir -p \
+  large_files \
+  processed_annotations \
+  work \
+  logs \
+  configs
+
+git clone https://github.com/rohan-ah-khan/ccm-talos ccm-talos
 cd ccm-talos
 ```
 
@@ -89,8 +99,23 @@ repeated for each Talos run.
 
 ### Reference resource preparation
 
-- Download or stage Talos reference resources using the CCM fork's resource scripts.
-- Record the shared reference and annotation paths used by the workflow.
+Run the download script from the runtime `large_files` directory. The script
+writes its outputs into the current directory, not the directory containing the
+script.
+
+```bash
+cd /path/to/talos/large_files
+module load samtools
+bash ../ccm-talos/large_files/gather_files.sh
+```
+
+The script can be restarted after an interrupted or failed download. Completed
+files are reused, and partial downloads are resumed from their `.part` files.
+It creates the reference FASTA index with Samtools and reports any missing or
+partial files after its tmux session closes. The script will likely need to be
+run more than once because tmux may not be able to create enough panes for all
+downloads in a single run. Each rerun skips completed files and continues the
+remaining downloads.
 
 ### Nextflow configuration
 
