@@ -21,6 +21,7 @@ process MergeVcfsWithBcftools {
         	--force-single \
         	-m none \
         	-0 \
+                --threads ${task.cpus} \
         	-Oz \
         	--no-version \
         	-o "${cohort}_merged.vcf.bgz" \
