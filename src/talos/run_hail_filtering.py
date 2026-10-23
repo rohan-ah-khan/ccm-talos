@@ -305,6 +305,16 @@ def filter_matrix_by_ac(mt: hl.MatrixTable, af_threshold: float = 0.01, min_ac_t
     )
 
 
+def filter_matrix_by_configured_ac(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """Apply the coarse callset-frequency filter using the configured thresholds."""
+
+    return filter_matrix_by_ac(
+        mt=mt,
+        af_threshold=config_retrieve(['RunHailFiltering', 'ac_threshold']),
+        min_ac_to_filter=config_retrieve(['ValidateMOI', 'min_callset_ac_to_filter']),
+    )
+
+
 def filter_to_population_rare(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     run the rare filter, using Gnomad Exomes and Genomes; allow clinvar pathogenic to slip through this filter.
@@ -1087,7 +1097,7 @@ def main(
     mt = filter_on_quality_flags(mt=mt)
 
     # filter variants by frequency
-    mt = filter_matrix_by_ac(mt=mt)
+    mt = filter_matrix_by_configured_ac(mt=mt)
 
     if checkpoint:
         mt = generate_a_checkpoint(mt, f'{checkpoint}_green_genes')

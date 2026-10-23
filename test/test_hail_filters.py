@@ -9,6 +9,7 @@ import hail as hl
 from talos.models import GeneDetail, PanelApp
 from talos.run_hail_filtering import (
     filter_matrix_by_ac,
+    filter_matrix_by_configured_ac,
     filter_on_quality_flags,
     green_gene_intervals,
     parse_gene_location,
@@ -89,6 +90,19 @@ def test_ac_filter_no_filt(
     )
 
     assert filter_matrix_by_ac(mt=matrix, af_threshold=threshold).count_rows() == rows
+
+
+def test_ac_filter_uses_configured_minimum(make_a_mt: hl.MatrixTable):
+    """Variants below the configured minimum AC are not filtered on callset AF."""
+    matrix = make_a_mt.annotate_rows(
+        info=make_a_mt.info.annotate(
+            clinvar_talos=0,
+            AC=[6],
+            AF=[0.1],
+        ),
+    )
+
+    assert filter_matrix_by_configured_ac(matrix).count_rows() == 1
 
 
 @pytest.mark.parametrize(
