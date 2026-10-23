@@ -35,8 +35,7 @@ mkdir -p \
   large_files \
   processed_annotations \
   work \
-  logs \
-  configs
+  logs
 
 git clone https://github.com/rohan-ah-khan/ccm-talos ccm-talos
 cd ccm-talos
@@ -84,7 +83,7 @@ From the cloned repository in an interactive HPF compute session, run:
 
 ```bash
 bash docker/scripts/build_singularity.sh \
-    /hpf/largeprojects/tgnode/sandbox/rkhan/talos_attempt/containers
+    /path/to/talos/containers
 ```
 
 ### Use an existing Singularity image
@@ -94,8 +93,6 @@ build, archive transfer, and Singularity conversion steps do not need to be
 repeated for each Talos run.
 
 ## Running Talos on HPF
-
-*To be documented after container setup is finalized. The following is just a skeleton*
 
 ### Reference resource preparation
 
@@ -119,9 +116,18 @@ remaining downloads.
 
 ### Nextflow configuration
 
-- Configure Singularity and the SLURM executor.
-- Point relevant processes to the chosen `.sif` image.
-- Configure writable temporary directories for Hail/Spark and suitable task resources.
+`configs/hpf.config` is layered on top of the repository's generic
+`nextflow.config`. It selects SLURM and Singularity, points processes to the HPF
+`.sif`, and uses writable temporary directories below the Talos working
+directory.
+
+All paths in the HPF configuration are derived from the `TALOS_BASE`
+environment variable. Set it to the Talos working directory before launching
+Nextflow:
+
+```bash
+export TALOS_BASE=/path/to/talos
+```
 
 ### Run annotation preparation
 
