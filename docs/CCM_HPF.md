@@ -25,20 +25,23 @@ additional launcher scripts and executable symlinks are not required.
 
 ## Setup
 
-Choose a Talos working directory on HPF, create the runtime directories, and
-clone the CCM Talos repository inside it:
+Create the initial HPF directories and clone the CCM Talos repository beneath
+`repo`:
 
 ```bash
-cd /path/to/talos
+export TALOS_BASE=/path/to/talos
 
 mkdir -p \
-  large_files \
-  processed_annotations \
-  work \
-  logs
+  "$TALOS_BASE/repo" \
+  "$TALOS_BASE/resources/container" \
+  "$TALOS_BASE/resources/reference" \
+  "$TALOS_BASE/resources/prepared" \
+  "$TALOS_BASE/config" \
+  "$TALOS_BASE/scripts"
 
-git clone https://github.com/rohan-ah-khan/ccm-talos ccm-talos
-cd ccm-talos
+git clone https://github.com/rohan-ah-khan/ccm-talos \
+  "$TALOS_BASE/repo/ccm-talos"
+cd "$TALOS_BASE/repo/ccm-talos"
 ```
 
 Talos requires a Singularity image (`.sif`) on HPF. **If an existing `.sif` is available**, 
@@ -64,17 +67,17 @@ bash docker/scripts/build_docker.sh /path/to/output
 
 #### 2. Transfer the Docker archive to HPF
 
-Create a container directory on HPF (example location):
+Create the container directory on HPF:
 
 ```bash
-mkdir -p /path/to/containers
+mkdir -p /hpf/largeprojects/tgnode/sandbox/rkhan/talos/resources/container
 ```
 
 From the local machine, transfer the archive:
 
 ```bash
 scp /path/to/output/talos_12.2.1_amd64.tar \
-    YOUR_HPF_LOGIN:/path/to/containers/
+    YOUR_HPF_LOGIN:/hpf/largeprojects/tgnode/sandbox/rkhan/talos/resources/container/
 ```
 
 #### 3. Build and check Singularity on HPF
@@ -83,7 +86,7 @@ From the cloned repository in an interactive HPF compute session, run:
 
 ```bash
 bash docker/scripts/build_singularity.sh \
-    /path/to/talos/containers
+    /hpf/largeprojects/tgnode/sandbox/rkhan/talos/resources/container
 ```
 
 ### Use an existing Singularity image
@@ -96,14 +99,14 @@ repeated for each Talos run.
 
 ### Reference resource preparation
 
-Run the download script from the runtime `large_files` directory. The script
-writes its outputs into the current directory, not the directory containing the
-script.
+Run the download script from `resources/reference`. The script writes its
+outputs into the current directory, not the directory containing the script.
 
 ```bash
-cd /path/to/talos/large_files
+export TALOS_BASE=/path/to/talos
+cd "$TALOS_BASE/resources/reference"
 module load samtools
-bash ../ccm-talos/large_files/gather_files.sh
+bash "$TALOS_BASE/repo/ccm-talos/large_files/gather_files.sh"
 ```
 
 The script can be restarted after an interrupted or failed download. Completed
