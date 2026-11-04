@@ -10,11 +10,11 @@ module load Singularity/3.11.3
 
 # Create directories
 mkdir -p "$OUTPUT_DIR" \
-    "$OUTPUT_DIR/../singularity/cache" \
-    "$OUTPUT_DIR/../singularity/tmp"
+    "$OUTPUT_DIR/singularity/cache" \
+    "$OUTPUT_DIR/singularity/tmp"
 
-export SINGULARITY_CACHEDIR="$OUTPUT_DIR/../singularity/cache"
-export SINGULARITY_TMPDIR="$OUTPUT_DIR/../singularity/tmp"
+export SINGULARITY_CACHEDIR="$OUTPUT_DIR/singularity/cache"
+export SINGULARITY_TMPDIR="$OUTPUT_DIR/singularity/tmp"
 
 # Build Singularity image from Docker archive
 singularity build \
