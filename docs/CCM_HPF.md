@@ -80,13 +80,29 @@ scp /path/to/output/talos_12.2.1_amd64.tar \
     YOUR_HPF_LOGIN:/hpf/largeprojects/tgnode/sandbox/rkhan/talos/resources/container/
 ```
 
-#### 3. Build and check Singularity on HPF
+#### 3. Build and validate Singularity on HPF
 
 From the cloned repository in an interactive HPF compute session, run:
 
 ```bash
 bash docker/scripts/build_singularity.sh \
     /hpf/largeprojects/tgnode/sandbox/rkhan/talos/resources/container
+```
+
+A successful build ends with:
+
+```text
+[SUCCESS] TALOS Singularity image passed validation.
+```
+
+After this validation succeeds, the transferred Docker archive and temporary
+Singularity build cache can be removed from HPF:
+
+```bash
+rm $TALOS_BASE/resources/container/talos_12.2.1_amd64.tar
+rm -r $TALOS_BASE/resources/container/singularity/cache
+rm -r $TALOS_BASE/resources/container/singularity/tmp
+rmdir $TALOS_BASE/resources/container/singularity
 ```
 
 ### Use an existing Singularity image
@@ -117,6 +133,12 @@ run more than once because tmux may not be able to create enough panes for all
 downloads in a single run. Each rerun skips completed files and continues the
 remaining downloads.
 
+The download stage is complete when the script prints:
+
+```text
+[SUCCESS] All required Talos resources are present.
+```
+
 ### Nextflow configuration
 
 `configs/hpf.config` is layered on top of the repository's generic
@@ -134,8 +156,64 @@ export TALOS_BASE=/path/to/talos
 
 ### Run annotation preparation
 
-- Run `preparation.nf` with the HPF configuration and review its logs and outputs.
+Submit the preparation workflow through Slurm. With no date argument, it uses
+the current ClinVar release:
+
+```bash
+export TALOS_BASE=/path/to/talos
+cd "$TALOS_BASE/repo/ccm-talos"
+mkdir -p "$TALOS_BASE/logs/preparation"
+
+sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" scripts/prepare_hpf.slurm
+```
+
+The launcher writes prepared resources in `resources/prepared`. To prepare a retrospective ClinVar snapshot, pass an evidence date in `YYYY-MM-DD` format. For example:
+
+```bash
+sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" \
+  scripts/prepare_hpf.slurm 2023-10-01
+```
+
+The date selects the ClinVar snapshot. Supply the same date to the later Talos
+analysis to give its evidence retrospective timestamps.
+
 
 ### Run Talos analysis
 
-- Document cohort inputs, Talos execution commands, result locations, and validation checks.
+Talos uses one tab-separated input TSV. For a small-variant run, a
+row using a joint VCF looks like:
+
+```text
+cohort	path	type	pedigree	config	history
+short_read_2026_11	/path/to/talos/cohorts/short_read/2026-11/joint.vcf.bgz	vcf	/path/to/talos/cohorts/short_read/2026-11/cohort.ped	/path/to/talos/config/talos.toml	/path/to/talos/results/short_read/previous/full_results.json
+```
+
+The `history` column is optional and can be omitted for the first analysis.
+For later analyses, it points to the previous full-results JSON. Additional
+cohorts can be provided as additional rows.
+
+The pedigree is also tab-separated, has no header, and contains six required
+columns plus an optional seventh HPO column. It can contain multiple families:
+
+```text
+FAM001	child_1	father_1	mother_1	1	2	HP:0001250,HP:0001263
+FAM001	father_1	0	0	1	1
+FAM001	mother_1	0	0	2	1
+FAM002	child_2	0	0	2	2	HP:0004322
+```
+
+Sample IDs must match the VCF.
+
+The HPF launcher takes the input TSV, output directory, and a run name. It
+therefore does not hard-code a production cohort layout:
+
+```bash
+export TALOS_BASE=/path/to/talos
+mkdir -p "$TALOS_BASE/logs/talos"
+cd "$TALOS_BASE/repo/ccm-talos"
+
+sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" scripts/run_hpf.slurm \
+  /path/to/talos/cohorts/short_read/2026-11/talos_input.tsv \
+  /path/to/talos/results/short_read/2026-11 \
+  short_read_2026_11
+```
