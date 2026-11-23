@@ -17,7 +17,7 @@ from semsimian import Semsimian
 from talos.config import config_retrieve
 from talos.models import PanelApp, ResultData
 from talos.static_values import get_evidence_date
-from talos.utils import get_symbol_to_ensg_mapping, read_json_from_path
+from talos.utils import get_categories_translated, get_symbol_to_ensg_mapping, read_json_from_path
 
 _SEMSIM_CLIENT: Semsimian | None = None
 
@@ -141,22 +141,34 @@ def annotate_phenotype_matches(result_object: ResultData, gen_phen: dict[str, se
                 variant.phenotype_labels = pheno_matches
 
 
-def remove_phenotype_required_variants(result_object: ResultData):
+def remove_phenotype_required_variants(result_object: ResultData, panelapp: PanelApp):
     """
     remove any variants where a phenotype match is required but not found
 
     Args:
-        result_object ():
+        result_object: candidate results
+        panelapp: cohort panel data, used to recognise default-panel genes
     """
 
     # for these categories, require a phenotype-gene match
-    cats_require_pheno_match = config_retrieve(['ValidateMOI', 'phenotype_match'], [])
+    cats_require_pheno_match = get_categories_translated('phenotype_match')
+    default_panel = config_retrieve(['GeneratePanelData', 'default_panel'], 137)
+    default_panel_genes = {
+        gene_id
+        for gene_id, gene_detail in (panelapp.genes | panelapp.strs).items()
+        if default_panel in gene_detail.panels
+    }
 
     for participant in result_object.results.values():
         kept_variants = []
         for variant in participant.variants:
             # boolean for whether this variant was phenotype matched
-            matched_variant = bool(variant.phenotype_labels or variant.panels.matched or variant.panels.forced)
+            matched_variant = bool(
+                variant.phenotype_labels
+                or variant.panels.matched
+                or variant.panels.forced
+                or variant.gene in default_panel_genes
+            )
 
             # if the variant-gene doesn't have a cohort-forced or phenotypic match panel
             # and isn't a specific match between participant and gene symbol
@@ -231,7 +243,7 @@ def main(
     annotate_phenotype_matches(results, gen_phen_dict)
 
     # remove any variants where a phenotype match is required but not found
-    remove_phenotype_required_variants(results)
+    remove_phenotype_required_variants(results, panelapp)
 
     # validate the object
     validated_results = ResultData.model_validate(results)

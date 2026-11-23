@@ -454,6 +454,9 @@ class GeneDetail(BaseModel):
     new: set[int] = Field(default_factory=set)
     panels: set[int] = Field(default_factory=set)
     panel_confidences: dict[int, int] = Field(default_factory=dict)
+    # Preserve each panel's MOI so ValidateMOI can derive an inheritance model
+    # from only the panels applicable to an individual participant. 
+    panel_mois: dict[int, str] = Field(default_factory=dict)
 
 
 class StrDetail(BaseModel):
@@ -482,6 +485,7 @@ class StrDetail(BaseModel):
     # and where does it appear?
     panels: set[int] = Field(default_factory=set)
     panel_confidences: dict[int, int] = Field(default_factory=dict)
+    panel_mois: dict[int, str] = Field(default_factory=dict)
 
 
 class PanelShort(BaseModel):

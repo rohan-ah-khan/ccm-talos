@@ -305,6 +305,7 @@ def fetch_genes_for_panels(panelapp_data: PanelApp, cached_panelapp: DownloadedP
                     new=new_panels,
                     panels=panel_intersection,
                     panel_confidences={pid: obj_data.panels[pid].confidence for pid in panel_intersection},
+                    panel_mois={pid: obj_data.panels[pid].moi for pid in panel_intersection},
                 )
             else:
                 assert isinstance(obj_data, DownloadedPanelAppStr)
@@ -317,6 +318,7 @@ def fetch_genes_for_panels(panelapp_data: PanelApp, cached_panelapp: DownloadedP
                     moi=moi,
                     panels=panel_intersection,
                     panel_confidences={pid: obj_data.panels[pid].confidence for pid in panel_intersection},
+                    panel_mois={pid: obj_data.panels[pid].moi for pid in panel_intersection},
                     normal_repeats=obj_data.normal_repeats,
                     pathogenic_repeats=obj_data.pathogenic_repeats,
                     expansion=obj_data.expansion,
@@ -356,6 +358,7 @@ def update_moi_from_config(
             logger.info(f'From custom data: setting {ensg} MOI to {moi}')
             panelapp_data.genes[ensg].moi = moi
             panelapp_data.genes[ensg].panels.add(CUSTOM_PANEL_ID)
+            panelapp_data.genes[ensg].panel_mois[CUSTOM_PANEL_ID] = moi
 
         else:
             # if this is a new gene, add it to the dictionary
@@ -364,6 +367,7 @@ def update_moi_from_config(
                 symbol=gene_data.get('symbol', f'Custom: {ensg}'),
                 moi=moi,
                 panels={CUSTOM_PANEL_ID},
+                panel_mois={CUSTOM_PANEL_ID: moi},
                 chrom=gene_data.get('chrom', 'chrUnknown'),
                 location=gene_data.get('location', 'Unknown'),
             )

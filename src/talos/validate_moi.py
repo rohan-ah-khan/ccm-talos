@@ -37,6 +37,7 @@ from talos.models import (
 )
 from talos.moi_tests import MOIRunner
 from talos.static_values import get_evidence_date
+from talos.unified_panelapp_parser import get_simple_moi
 from talos.utils import (
     GeneDict,
     annotate_variant_dates_using_prior_results,
@@ -55,6 +56,47 @@ MALE_FEMALE = {
     1: MemberSex.MALE.value,
     2: MemberSex.FEMALE.value,
 }
+
+CUSTOM_PANEL_ID = 0
+
+
+def participant_moi_groups(
+    gene_data: GeneDetail,
+    participants: dict[str, ParticipantHPOPanels],
+) -> dict[str, set[str]]:
+    """Group participants by the MOI from panels applicable to each participant.
+
+    Phenotype-matched panels are participant-specific. The default panel and
+    configured forced panels apply cohort-wide, while custom panel ``0`` is an
+    explicit MOI override and therefore takes precedence. Older cohort panel
+    JSON has no ``panel_mois`` mapping; for that data, retain the historical
+    gene-wide consensus behaviour.
+    """
+    default_panel = config_retrieve(['GeneratePanelData', 'default_panel'], 137)
+    forced_panel_ids = set(config_retrieve(['GeneratePanelData', 'forced_panels'], [])) | {CUSTOM_PANEL_ID}
+    groups: dict[str, set[str]] = defaultdict(set)
+
+    for sample_id, participant in participants.items():
+        applicable_panels = gene_data.panels.intersection(participant.panels | forced_panel_ids)
+        if default_panel in gene_data.panels:
+            applicable_panels.add(default_panel)
+        if not applicable_panels:
+            continue
+
+        # A manual override is deliberately gene-wide and replaces inferred MOI.
+        if CUSTOM_PANEL_ID in applicable_panels:
+            participant_moi = gene_data.panel_mois.get(CUSTOM_PANEL_ID, gene_data.moi)
+        else:
+            panel_mois = {
+                gene_data.panel_mois[panel_id]
+                for panel_id in applicable_panels
+                if panel_id in gene_data.panel_mois
+            }
+            participant_moi = get_simple_moi(panel_mois, gene_data.chrom) if panel_mois else gene_data.moi
+
+        groups[participant_moi].add(sample_id)
+
+    return dict(groups)
 
 
 def set_up_moi_filters(panelapp_data: PanelApp, pedigree: PedigreeParser) -> dict[str, MOIRunner]:
@@ -89,15 +131,14 @@ def set_up_moi_filters(panelapp_data: PanelApp, pedigree: PedigreeParser) -> dic
 
     moi_dictionary = {}
 
-    # iterate over all genes
+    # Iterate over all genes. New panel data retains per-panel MOI, allowing
+    # participants to be grouped by only their applicable panels. Older panel
+    # JSON falls back to the historical cohort-wide gene MOI.
     for gene_data in panelapp_data.genes.values():
-        # extract the per-gene MOI, don't re-simplify
-        gene_moi = gene_data.moi
-
-        # if we haven't seen this MOI before, set up the appropriate filter
-        if gene_moi not in moi_dictionary:
-            # get a MOIRunner with the relevant filters
-            moi_dictionary[gene_moi] = MOIRunner(pedigree=pedigree, target_moi=gene_moi)
+        target_mois = set(participant_moi_groups(gene_data, panelapp_data.participants)) or {gene_data.moi}
+        for gene_moi in target_mois:
+            if gene_moi not in moi_dictionary:
+                moi_dictionary[gene_moi] = MOIRunner(pedigree=pedigree, target_moi=gene_moi)
 
     return moi_dictionary
 
@@ -105,7 +146,7 @@ def set_up_moi_filters(panelapp_data: PanelApp, pedigree: PedigreeParser) -> dic
 def apply_moi_to_variants(
     variant_dict: GeneDict,
     moi_lookup: dict[str, MOIRunner],
-    panelapp_data: dict[str, GeneDetail],
+    panelapp_data: PanelApp,
     pedigree: PedigreeParser,
 ) -> list[ReportVariant]:
     """
@@ -115,7 +156,7 @@ def apply_moi_to_variants(
     Args:
         variant_dict (dict): all possible variants, lists indexed by gene
         moi_lookup (dict): the MOI model runner per MOI string
-        panelapp_data (dict): all genes and relevant details
+        panelapp_data (PanelApp): all genes, participants, and relevant panel details
         pedigree (PedigreeParser): the pedigree for this cohort
     """
 
@@ -126,12 +167,16 @@ def apply_moi_to_variants(
 
         # extract the panel data specific to this gene
         # extract once per gene, not once per variant
-        panel_gene_data = panelapp_data.get(gene)
+        panel_gene_data = panelapp_data.genes.get(gene)
 
         # variant appears to be in a red gene
         if panel_gene_data is None:
             logger.error(f'How did this gene creep in? {gene}')
             continue
+
+        # Each participant belongs to exactly one group for this gene: the
+        # consensus MOI of only the panels applicable to that participant.
+        moi_groups = participant_moi_groups(panel_gene_data, panelapp_data.participants)
 
         for variant in variants:
             # is this even possible?
@@ -145,29 +190,33 @@ def apply_moi_to_variants(
             # pass on whether this variant is support only
             # - no dominant MOI
             # - discarded if two support-only form a comp-het
-            panel_moi = panel_gene_data.moi
-            runner = moi_lookup[panel_moi]
-            if not isinstance(runner, MOIRunner):
-                raise TypeError(f'MOIRunner was not a MOIRunner object: {runner}')
+            for panel_moi, applicable_samples in moi_groups.items():
+                runner = moi_lookup[panel_moi]
+                if not isinstance(runner, MOIRunner):
+                    raise TypeError(f'MOIRunner was not a MOIRunner object: {runner}')
 
-            variant_results = runner.run(
-                principal_var=variant,
-                comp_het=comp_het_dict,
-                partial_pen=bool(variant.info.get('categorybooleanclinvarplp', False)),
-            )
+                variant_results = [
+                    result
+                    for result in runner.run(
+                        principal_var=variant,
+                        comp_het=comp_het_dict,
+                        partial_pen=bool(variant.info.get('categorybooleanclinvarplp', False)),
+                    )
+                    if result.sample in applicable_samples
+                ]
 
-            # Flag! If this is a ClinVar P/LP variant, and we interpret under a lenient MOI, add flag for analysts
-            if panel_gene_data.moi == 'Mono_And_Biallelic' and variant.info.get('categorybooleanclinvarplp', False):
-                # consider each variant in turn
-                for each_result in variant_results:
-                    # never tag if this variant/sample is de novo
-                    if translate_category('4') in each_result.categories:
-                        continue
+                # Flag! If this is a ClinVar P/LP variant, and we interpret under a lenient MOI, add flag for analysts
+                if panel_moi == 'Mono_And_Biallelic' and variant.info.get('categorybooleanclinvarplp', False):
+                    # consider each variant in turn
+                    for each_result in variant_results:
+                        # never tag if this variant/sample is de novo
+                        if translate_category('4') in each_result.categories:
+                            continue
 
-                    if each_result.reasons == 'Autosomal Dominant':
-                        each_result.flags.add(AMBIGUOUS_FLAG)
+                        if each_result.reasons == 'Autosomal Dominant':
+                            each_result.flags.add(AMBIGUOUS_FLAG)
 
-            results.extend(variant_results)
+                results.extend(variant_results)
 
     return results
 
@@ -490,7 +539,7 @@ def main(
                 apply_moi_to_variants(
                     variant_dict=contig_dict,
                     moi_lookup=moi_lookup,
-                    panelapp_data=panelapp.genes,
+                    panelapp_data=panelapp,
                     pedigree=ped,
                 ),
             )
