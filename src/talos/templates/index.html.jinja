@@ -161,6 +161,16 @@
     🚦 - Newly Green in PanelApp
                             </pre>
                         </p>
+                        <p class="mb-1">
+                            The <b>Candidates</b> filter uses the same information, relative to the run that produced this report:
+                        </p>
+                        <ul class="mb-0">
+                            <li><b>New</b> - first found in this run. This includes every candidate for a participant new to this run, or for a run with no previous results.</li>
+                            <li><b>Updated</b> - found in a previous run, and showing at least one of the emojis above.</li>
+                        </ul>
+                        <p class="mb-0">
+                            A candidate is only new or updated in the run where that change happened. On the next run it is no longer shown as new or updated unless its evidence changes again.
+                        </p>
                     </div>
                 </div>
 
@@ -171,6 +181,14 @@
                             <option value="all" selected>All variants</option>
                             <option value="has">With phenotype match</option>
                             <option value="none">Without phenotype match</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="candidate-status-filter" class="form-label">Candidates</label>
+                        <select id="candidate-status-filter" class="form-select form-select-sm" style="max-width: 260px;">
+                            <option value="all" selected>All Candidates</option>
+                            <option value="new_or_updated">New or Updated Candidates</option>
+                            <option value="new">New Candidates</option>
                         </select>
                     </div>
                     <div>
@@ -351,6 +369,40 @@
                    '&hg=38&distance=' + distance + '&mask=' + mask + '&precomputed=0';
         }
 
+        // Numeric score/distance, or null when missing. echtvar's missing marker (-2147483648) reaches the VCF
+        // rounded to about -2147480064, so treat anything at or below -1e9 as missing.
+        function scoreOrNull(value) {
+            if (value === undefined || value === null || value === 'missing' || value === '.') {
+                return null;
+            }
+            var number = parseFloat(value);
+            return (isNaN(number) || number <= -1e9) ? null : number;
+        }
+
+        // the SpliceAI2 component(s) matching the summary score, e.g. "donor loss, +4 bp"
+        function spliceAi2Details(info, summaryScore) {
+            if (!(summaryScore > 0)) {
+                return '';
+            }
+            var components = [
+                ['donor gain', 'spliceai2_donor_gain_score', 'spliceai2_donor_gain_distance'],
+                ['donor loss', 'spliceai2_donor_loss_score', 'spliceai2_donor_loss_distance'],
+                ['acceptor gain', 'spliceai2_acceptor_gain_score', 'spliceai2_acceptor_gain_distance'],
+                ['acceptor loss', 'spliceai2_acceptor_loss_score', 'spliceai2_acceptor_loss_distance']
+            ];
+            return components.filter(function(component) {
+                var componentScore = scoreOrNull(info[component[1]]);
+                return componentScore !== null && Math.abs(componentScore - summaryScore) <= 0.000001;
+            }).map(function(component) {
+                var distance = scoreOrNull(info[component[2]]);
+                if (distance === null) {
+                    return component[0];
+                }
+                distance = Math.round(distance);
+                return component[0] + ', ' + (distance >= 0 ? '+' : '') + distance + ' bp';
+            }).join('; ');
+        }
+
         function omimGeneUrl(symbol) {
             return 'https://www.omim.org/search?index=entry&start=1&search=' +
                    encodeURIComponent(symbol) + '&field=approved_gene_symbol';
@@ -446,6 +498,38 @@
 
             if (filterValue === 'none') {
                 return hasPhenotype !== '1';
+            }
+
+            return true;
+        });
+
+        var candidateStatusFilter = $('#candidate-status-filter');
+
+        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+            if (settings.nTable !== $('#variant-table')[0]) {
+                return true;
+            }
+
+            var filterValue = candidateStatusFilter.val();
+            if (!filterValue || filterValue === 'all') {
+                return true;
+            }
+
+            var aoData = settings.aoData[dataIndex];
+            var rowNode = aoData && aoData.nTr;
+            if (!rowNode) {
+                return true;
+            }
+
+            // 'new', 'updated' or 'unchanged' - see Variant.assign_candidate_status
+            var status = rowNode.getAttribute('data-candidate-status') || 'unchanged';
+
+            if (filterValue === 'new') {
+                return status === 'new';
+            }
+
+            if (filterValue === 'new_or_updated') {
+                return status === 'new' || status === 'updated';
             }
 
             return true;
@@ -582,14 +666,13 @@
                 if (variantData.info.alpha_missense_max && variantData.info.alpha_missense_max !== 'missing') {
                     html += 'AlphaMissense: ' + parseFloat(variantData.info.alpha_missense_max).toFixed(2) + '<br>';
                 }
-                var aviScore = variantData.info.avi_score;
-                var hasAviScore = aviScore !== undefined && aviScore !== null && aviScore !== 'missing' && !isNaN(parseFloat(aviScore));
-                if (hasAviScore) {
-                    html += 'AlphaGenome AVI PHRED: ' + parseFloat(aviScore).toFixed(2) + '<br>';
+                // missing scores are hidden, as for AlphaMissense
+                var aviScore = scoreOrNull(variantData.info.avi_score);
+                if (aviScore !== null) {
+                    html += 'AlphaGenome AVI PHRED: ' + aviScore.toFixed(2) + '<br>';
                 }
-                var spliceAiScore = variantData.info.splice_ai_delta;
-                var hasSpliceAiScore = spliceAiScore !== undefined && spliceAiScore !== null && spliceAiScore !== 'missing' && !isNaN(parseFloat(spliceAiScore));
-                if (hasSpliceAiScore) {
+                var spliceAiScore = scoreOrNull(variantData.info.splice_ai_delta);
+                if (spliceAiScore !== null) {
                     var variantRef = {
                         chrom: rowData.variantCoords.split(':')[0],
                         pos: rowData.variantCoords.split(':')[1],
@@ -597,42 +680,13 @@
                         alt: variantData.coordinates ? variantData.coordinates.alt : ''
                     };
                     var isSpliceAi2 = variantData.info.spliceai2_summary_score !== undefined;
-                    var spliceAiLabel = isSpliceAi2 ? 'SpliceAI2 summary' : 'SpliceAI';
-                    html += spliceAiLabel + ': <a href="' + spliceAiUrl(variantRef) + '" target="_blank">' + parseFloat(spliceAiScore).toFixed(2) + '</a>';
-
-                    if (isSpliceAi2) {
-                        var summaryScore = parseFloat(variantData.info.spliceai2_summary_score);
-                        var spliceAiComponents = [
-                            ['donor gain', 'spliceai2_donor_gain_score', 'spliceai2_donor_gain_distance'],
-                            ['donor loss', 'spliceai2_donor_loss_score', 'spliceai2_donor_loss_distance'],
-                            ['acceptor gain', 'spliceai2_acceptor_gain_score', 'spliceai2_acceptor_gain_distance'],
-                            ['acceptor loss', 'spliceai2_acceptor_loss_score', 'spliceai2_acceptor_loss_distance']
-                        ];
-                        var maxComponents = summaryScore > 0 ? spliceAiComponents.filter(function(component) {
-                            var componentScore = parseFloat(variantData.info[component[1]]);
-                            return !isNaN(componentScore) && Math.abs(componentScore - summaryScore) <= 0.000001;
-                        }) : [];
-
-                        if (maxComponents.length) {
-                            var componentDetails = maxComponents.map(function(component) {
-                                var details = component[0];
-                                var signedDistance = parseInt(variantData.info[component[2]], 10);
-                                if (!isNaN(signedDistance)) {
-                                    details += ', signed offset ' + (signedDistance >= 0 ? '+' : '') + signedDistance + ' bp';
-                                    var variantPosition = parseInt(variantRef.pos, 10);
-                                    if (!isNaN(variantPosition)) {
-                                        details += ', predicted site ' + variantRef.chrom + ':' + (variantPosition + signedDistance);
-                                    }
-                                }
-                                return details;
-                            }).join('; ');
-                            if (variantData.info.spliceai2_strand && variantData.info.spliceai2_strand !== '.') {
-                                componentDetails += ', strand ' + variantData.info.spliceai2_strand;
-                            }
-                            html += ' (' + escapeHtml(componentDetails) + ')';
-                        }
-                    } else if (variantData.info.splice_ai_csq && !['missing', 'No_consequence'].includes(variantData.info.splice_ai_csq)) {
-                        html += ' (' + escapeHtml(variantData.info.splice_ai_csq) + ')';
+                    html += (isSpliceAi2 ? 'SpliceAI2 summary' : 'SpliceAI') + ': <a href="' + spliceAiUrl(variantRef) + '" target="_blank">' + spliceAiScore.toFixed(2) + '</a>';
+                    var spliceAiDetails = isSpliceAi2 ? spliceAi2Details(variantData.info, scoreOrNull(variantData.info.spliceai2_summary_score)) : '';
+                    if (!isSpliceAi2 && variantData.info.splice_ai_csq && !['missing', 'No_consequence'].includes(variantData.info.splice_ai_csq)) {
+                        spliceAiDetails = variantData.info.splice_ai_csq;
+                    }
+                    if (spliceAiDetails) {
+                        html += ' (' + escapeHtml(spliceAiDetails) + ')';
                     }
                     html += '<br>';
                 }
@@ -930,6 +984,10 @@
         });
 
         phenotypeFilter.on('change', function () {
+            table.draw();
+        });
+
+        candidateStatusFilter.on('change', function () {
             table.draw();
         });
 
