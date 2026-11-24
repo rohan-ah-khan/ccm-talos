@@ -15,10 +15,11 @@ forbidden_genes = ['a', 'list', 'of', 'forbidden', 'genes']  # symbols, ENSG, or
 # must exist in the relevant panelapp instance
 forced_panels = [1, 2, 3]
 
-# confidence level - set this to a lower value to allow non-green PanelApp genes into the analysis
-# 3 = Green only
-# 2 = Amber or Green only
-# 1 = Red, Amber, or Green
+# PanelApp confidence threshold - set this to a lower value to allow non-green PanelApp genes into the analysis.
+# OMIM associations use the separate report category 4 and are included regardless of this PanelApp threshold.
+# 3 = PanelApp Green plus OMIM
+# 2 = PanelApp Amber or Green plus OMIM
+# 1 = PanelApp Red, Amber, or Green plus OMIM
 confidence_level = 3
 
 # integer, when parsing panel data, this value determines whether a gene is 'recent'

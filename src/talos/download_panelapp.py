@@ -21,12 +21,19 @@ Save ALL this data:
 - for each panel, collect the associated phenotypic terms
 - for each gene, collect the IDs of the panels it appears on, and the date it was first graded green
 
+The raw PanelApp JSON is retained as ``<output>.bk``. When an evidence date is
+provided, each PanelApp panel is read at its latest version on or before that
+date. OMIM disease panels built from the closest non-future HPO release are
+then merged into the normal output path, so downstream consumers continue to
+use the same filename.
+
 STR-specific feature - parses the PanelApp Repeat Disorders panel
 """
 
 import asyncio
 import re
 from argparse import ArgumentParser
+from datetime import date
 
 import aiohttp
 import httpx
@@ -43,6 +50,7 @@ from talos.models import (
     HpoTerm,
     PanelShort,
 )
+from talos.omim_panel import add_omim_to_panelapp_file
 from talos.utils import get_json_response
 
 ENTITY_TYPE_CONSTANT = 'entity_type'
@@ -100,7 +108,7 @@ def get_panels_and_hpo_terms(endpoint: str = PANELS_ENDPOINT) -> dict[int, list[
     return panels_by_hpo
 
 
-def parse_panel_activity(panel_activity: list[dict]) -> dict[str, str]:
+def parse_panel_activity(panel_activity: list[dict], target_date: date | None = None) -> dict[str, str]:
     """
     reads in the panel activity dictionary, and for each green entity, finds the date at
     which the entity obtained a Green rating
@@ -118,6 +126,10 @@ def parse_panel_activity(panel_activity: list[dict]) -> dict[str, str]:
 
     # do some stuff
     for activity_entry in panel_activity:
+        creation_date = parse(activity_entry['created']).date()
+        if target_date and creation_date > target_date:
+            continue
+
         # only interested in genes at the moment
         if activity_entry.get(ENTITY_TYPE_CONSTANT) != GENE_CONSTANT:
             continue
@@ -131,7 +143,7 @@ def parse_panel_activity(panel_activity: list[dict]) -> dict[str, str]:
             continue
 
         # find the event date for this activity entry
-        creation = parse(activity_entry['created'], ignoretz=True).strftime('%Y-%m-%d')
+        creation = creation_date.isoformat()
 
         # store it
         return_dict[gene_name] = creation
@@ -142,6 +154,7 @@ def parse_panel_activity(panel_activity: list[dict]) -> dict[str, str]:
 def parse_panel(
     panel_data: dict[str, str | list[dict]],
     panel_activities: list[dict],
+    target_date: date | None = None,
 ) -> dict:
     """
 
@@ -153,7 +166,7 @@ def parse_panel(
     # this will contain a range of bits, indexed on ENSG
     panel_gene_content: dict = {}
 
-    green_dates: dict[str, str] = parse_panel_activity(panel_activities)
+    green_dates: dict[str, str] = parse_panel_activity(panel_activities, target_date=target_date)
 
     # iterate over the genes in this panel result
     for gene in panel_data['genes']:
@@ -206,7 +219,11 @@ def get_latest_ensembl_data(grch38_versions) -> tuple[str, str] | None:
     return None
 
 
-async def get_single_panel(session: aiohttp.ClientSession, panel_id: int) -> dict[int, dict[str, str | list[dict]]]:
+async def get_single_panel(
+    session: aiohttp.ClientSession,
+    panel_id: int,
+    version: str | None = None,
+) -> dict[int, dict[str, str | list[dict]]]:
     """
     Async method to return data from a single panel.
     Does most of the initial parsing of panel data to reduce memory footprint.
@@ -214,11 +231,14 @@ async def get_single_panel(session: aiohttp.ClientSession, panel_id: int) -> dic
     Args:
         session: aiohttp ClientSession
         panel_id: int, panel ID to search for
+        version: optional historical panel version
 
     Returns:
         dict, indexed by panel ID, containing panel genes, name, and version
     """
     panel_url = PANEL_TEMPLATE_URL.format(id=panel_id)
+    if version is not None:
+        panel_url = f'{panel_url}/?version={version}'
     gene_results: list[dict] = []
     str_results: list[dict] = []
 
@@ -274,7 +294,18 @@ async def get_single_panel(session: aiohttp.ClientSession, panel_id: int) -> dic
                 }
             )
 
-    return {panel_id: {'name': panel_name, 'version': panel_version, 'genes': gene_results, 'strs': str_results}}
+    relevant_disorders = ' '.join(response.get('relevant_disorders') or [])
+    hpos = [HpoTerm(id=match, label='') for match in re.findall(HPO_RE, relevant_disorders)]
+
+    return {
+        panel_id: {
+            'name': panel_name,
+            'version': panel_version,
+            'genes': gene_results,
+            'strs': str_results,
+            'hpos': hpos,
+        },
+    }
 
 
 async def get_single_panel_activities(session: aiohttp.ClientSession, panel_id: int) -> dict:
@@ -300,7 +331,11 @@ async def get_single_panel_activities(session: aiohttp.ClientSession, panel_id: 
     ),
     reraise=True,
 )
-async def get_all_known_panels(panel_ids: set[int], activities: bool = False) -> dict:
+async def get_all_known_panels(
+    panel_ids: set[int],
+    activities: bool = False,
+    versions: dict[int, str] | None = None,
+) -> dict:
     """Take all the panel IDs, asynchronously query for them. If panelapp dies it dies."""
 
     tasks = []
@@ -310,41 +345,71 @@ async def get_all_known_panels(panel_ids: set[int], activities: bool = False) ->
             if activities:
                 tasks.append(asyncio.ensure_future(get_single_panel_activities(session, panel_id)))
             else:
-                tasks.append(asyncio.ensure_future(get_single_panel(session, panel_id)))
+                tasks.append(
+                    asyncio.ensure_future(get_single_panel(session, panel_id, version=(versions or {}).get(panel_id))),
+                )
 
         all_panel_details = await asyncio.gather(*tasks)
 
     return {int(pid): data for panel in all_panel_details for pid, data in panel.items()}
 
 
+def select_panel_versions(panel_activities: dict[int, list[dict]], target_date: date) -> dict[int, str]:
+    """Select the latest recorded version of each panel on or before ``target_date``."""
+
+    selected: dict[int, str] = {}
+    for panel_id, activities in panel_activities.items():
+        eligible = [entry for entry in activities if parse(entry['created']).date() <= target_date]
+        if not eligible:
+            continue
+        latest = max(eligible, key=lambda entry: parse(entry['created']))
+        selected[panel_id] = str(latest['panel_version'])
+    return selected
+
+
 def cli_main():
     logger.info('Starting PanelApp parsing')
     parser = ArgumentParser()
     parser.add_argument('--output', help='Where to write Panel data', required=True)
+    parser.add_argument(
+        '--evidence-date',
+        type=date.fromisoformat,
+        help='Use PanelApp versions and the closest HPO release on or before this date (YYYY-MM-DD)',
+    )
     args = parser.parse_args()
-    main(output=args.output)
+    main(output=args.output, evidence_date=args.evidence_date)
 
 
-def main(output: str):
+def main(output: str, evidence_date: date | None = None):
     """
     query PanelApp - get EVERYTHING
 
     Args:
         output (str): path to an output destination
+        evidence_date: optional date used to select historical PanelApp and HPO data
     """
 
-    # set up a collection object - loaded method execution
-    collected_panel_data = DownloadedPanelApp(hpos=get_panels_and_hpo_terms())
+    all_panels = set(get_panels_and_hpo_terms())
 
-    all_panels = set(collected_panel_data.hpos.keys())
-
-    async def _fetch_all() -> tuple[dict, dict]:
-        return await asyncio.gather(
-            get_all_known_panels(all_panels),
-            get_all_known_panels(all_panels, activities=True),
+    if evidence_date:
+        all_panel_activities = asyncio.run(get_all_known_panels(all_panels, activities=True))
+        panel_versions = select_panel_versions(all_panel_activities, evidence_date)
+        logger.info(f'Using {len(panel_versions)} PanelApp panels as at {evidence_date}')
+        all_panel_data = asyncio.run(
+            get_all_known_panels(set(panel_versions), versions=panel_versions),
         )
+    else:
+        async def _fetch_current() -> tuple[dict, dict]:
+            return await asyncio.gather(
+                get_all_known_panels(all_panels),
+                get_all_known_panels(all_panels, activities=True),
+            )
 
-    all_panel_data, all_panel_activities = asyncio.run(_fetch_all())
+        all_panel_data, all_panel_activities = asyncio.run(_fetch_current())
+
+    collected_panel_data = DownloadedPanelApp(
+        hpos={panel_id: panel_data['hpos'] for panel_id, panel_data in all_panel_data.items()},
+    )
 
     zero_green_panels: list[int] = []
 
@@ -364,6 +429,7 @@ def main(output: str):
         parsed_panel_data = parse_panel(
             panel_data=panel_data,
             panel_activities=panel_activities,
+            target_date=evidence_date,
         )
 
         collected_panel_data.versions.append(
@@ -432,6 +498,8 @@ def main(output: str):
 
     with open(output, 'w') as output_file:
         output_file.write(collected_panel_data.model_dump_json(indent=4))
+
+    add_omim_to_panelapp_file(output, target_date=evidence_date)
 
 
 if __name__ == '__main__':

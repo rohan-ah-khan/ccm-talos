@@ -150,15 +150,19 @@ workflow {
         ch_mane_json = channel.fromPath(params.mane_json, checkIfExists: true)
     }
 
-    String current_panelapp = "${params.processed_annotations}/panelapp_${current_month}.json"
+    String evidence_panelapp = "${params.processed_annotations}/panelapp_${evidence_month}.json"
+    String evidence_panelapp_backup = "${evidence_panelapp}.bk"
 
-    if (!file(current_panelapp).exists()) {
+    if (!file(evidence_panelapp).exists() || !file(evidence_panelapp_backup).exists()) {
         DownloadPanelApp(
-            current_month,
+            evidence_month,
+            evidence_date ?: '',
         )
-        panelapp_out = DownloadPanelApp.out
+        panelapp_out = DownloadPanelApp.out.combined
+        panelapp_backup = DownloadPanelApp.out.panelapp_backup
     } else {
-        panelapp_out = channel.fromPath(current_panelapp, checkIfExists: true)
+        panelapp_out = channel.fromPath(evidence_panelapp, checkIfExists: true)
+        panelapp_backup = channel.fromPath(evidence_panelapp_backup, checkIfExists: true)
     }
 
     // use workflow outputs, not individual copies
@@ -173,6 +177,7 @@ workflow {
         mitotip = ch_mitotip_zip
         mane_json = ch_mane_json
         napogee = ch_napogee_zip
+        panelapp_backup = panelapp_backup
         panelapp_out = panelapp_out
 }
 
@@ -198,5 +203,7 @@ output {
     napogee {
     }
     panelapp_out {
+    }
+    panelapp_backup {
     }
 }

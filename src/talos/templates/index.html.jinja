@@ -123,14 +123,20 @@
 
                         <h5>Confidence</h5>
                         <p class="mb-1">
-                            Talos can include non-green PanelApp genes, depending on configuration.
+                            Talos can include non-green PanelApp genes, depending on configuration. OMIM is shown as
+                            confidence 4 for report filtering, but represents an OMIM source match rather than a
+                            higher PanelApp confidence.
                             See <a href="https://panelapp-aus.org/#!Guidelines" target="_blank">PanelApp Guidelines</a> for the full meaning of each confidence level.
                         </p>
                         <p class="mb-1">
-                            Hovering over a gene symbol shows all panels that match this participant, with the RAG confidence for the gene on each panel.
+                            Hovering over a gene symbol shows the applied panels that contain that candidate gene,
+                            with the RAG confidence or purple OMIM source marker for the gene on each panel.
                         </p>
                         <p class="mb-0">
-                            The coloured button next to the gene symbol shows the highest confidence level across matched panels, and can be filtered using the checkboxes above the table.
+                            The markers next to the gene symbol show the highest available PanelApp classification
+                            (Green, Amber, then Red) and, when applicable, a separate purple OMIM marker beside it.
+                            Mixed-source results belong to every applicable filter, so they remain visible when either
+                            their PanelApp classification or OMIM is selected.
                         </p>
 
                         <h5>Evidence Updates</h5>
@@ -159,7 +165,7 @@
                         </select>
                     </div>
                     <div>
-                        <label class="form-label">Panel confidence</label>
+                        <label class="form-label">Panel confidence / source</label>
                         <div>
                             <div class="form-check form-check-inline">
                                 <input class="form-check-input conf-filter" type="checkbox" id="conf-3" value="3" checked>
@@ -174,6 +180,10 @@
                             <div class="form-check form-check-inline">
                                 <input class="form-check-input conf-filter" type="checkbox" id="conf-1" value="1">
                                 <label class="form-check-label" for="conf-1">🔴 Red</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input conf-filter" type="checkbox" id="conf-4" value="4" checked>
+                                <label class="form-check-label" for="conf-4">🟣 OMIM</label>
                             </div>
                             <div class="form-check form-check-inline">
                                 <input class="form-check-input conf-filter" type="checkbox" id="conf-0" value="0">
@@ -441,7 +451,7 @@
                 return this.value;
             }).get();
 
-            if (checkedValues.length === 4) {
+            if (checkedValues.length === $('.conf-filter').length) {
                 return true;
             }
 
@@ -451,8 +461,10 @@
                 return true;
             }
 
-            var conf = rowNode.getAttribute('data-max-confidence') || '0';
-            return checkedValues.indexOf(conf) !== -1;
+            var panelCategories = (rowNode.getAttribute('data-panel-categories') || '0').split(',');
+            return panelCategories.some(function(category) {
+                return checkedValues.indexOf(category) !== -1;
+            });
         });
 
         function formatChildRow(rowData) {

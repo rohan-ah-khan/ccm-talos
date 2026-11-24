@@ -34,6 +34,7 @@ from talos.models import (
     StrDetail,
     StructuralVariant,
 )
+from talos.omim_panel import OMIM_CONFIDENCE
 from talos.static_values import get_evidence_date
 from talos.utils import read_json_from_path
 
@@ -53,7 +54,10 @@ MEAN_SLASH_SAMPLE = 'Mean/sample'
 GNOMAD_POP = config_retrieve(['RunHailFilteringSv', 'gnomad_population'], 'gnomad_v4.1')
 
 # emoji source https://tools.picsart.com/text/emojis/
-CONFIDENCE_EMOJI: dict[int, str] = {3: '🟢', 2: '🟡', 1: '🔴'}
+CONFIDENCE_EMOJI: dict[int, str] = {4: '🟣', 3: '🟢', 2: '🟡', 1: '🔴'}
+
+# Show the highest applicable PanelApp classification, followed by the separate OMIM source marker.
+PANELAPP_DISPLAY_PRIORITY = (3, 2, 1)
 REASON_EMOJIS = {
     'new': '🆕',
     'clinvar': '💫',
@@ -458,12 +462,6 @@ class Sample:
         ]
 
         # Pre-serialize complex nested objects for Jinja2
-        self.panel_details_json = (
-            {str(pid): panel.model_dump(mode='json') for pid, panel in self.panel_details.items()}
-            if hasattr(self, 'panel_details') and self.panel_details
-            else {}
-        )
-
         self.family_members_json = (
             {member_id: member.model_dump(mode='json') for member_id, member in self.family_members.items()}
             if hasattr(self, 'family_members') and self.family_members
@@ -634,9 +632,13 @@ class Variant:
         applied_panel_ids = match_ids | {html_builder.base_panel}
 
         self.max_confidence: int = report_variant.max_confidence
+        candidate_panel_ids: set[int] = set()
+        derived_panel_categories: set[int] = set()
 
         # List of (gene_id, symbol, panel_confidence_tooltip_html)
         self.genes: list[tuple[str, str, str]] = []
+        # OMIM-only genes should not link to a potentially nonexistent PanelApp entity page.
+        self.panelapp_linked_genes: set[str] = set()
         # STRs are rated separately to their gene in PanelApp, so use the STR-specific panel confidences
         is_str = isinstance(self.var_data, ShortTandemRepeat)
         for gene_id in report_variant.gene.split(','):
@@ -646,12 +648,20 @@ class Variant:
                 else html_builder.panelapp.genes.get(gene_id, GeneDetail(symbol=gene_id))
             )
             tooltip_parts = []
+            has_non_omim_panel = False
             for panel_id, confidence in sorted(gene_panelapp_entry.panel_confidences.items()):
                 if panel_id not in applied_panel_ids:
                     continue
+                candidate_panel_ids.add(panel_id)
+                if confidence > 0:
+                    derived_panel_categories.add(confidence)
                 panel_name = html_builder.panelapp.metadata.get(panel_id, PanelShort(id=panel_id)).name or str(panel_id)
                 tooltip_parts.append(f'{CONFIDENCE_EMOJI.get(confidence, "⚪")} {panel_name}')
+                if confidence != OMIM_CONFIDENCE:
+                    has_non_omim_panel = True
             self.genes.append((gene_id, gene_panelapp_entry.symbol, '<br>'.join(tooltip_parts)))
+            if has_non_omim_panel:
+                self.panelapp_linked_genes.add(gene_id)
 
             # is this a new gene? STR green dates aren't currently parsed from PanelApp activity
             new_panels = set() if isinstance(gene_panelapp_entry, StrDetail) else gene_panelapp_entry.new
@@ -661,8 +671,29 @@ class Variant:
 
             # now draw the rest of the owl
             self.new_panels.update(
-                {f'{sample.metadata.panel_details[pid]}({pid})' for pid in new_panels.intersection(match_ids)},
+                {
+                    f'{html_builder.panelapp.metadata[pid]}({pid})'
+                    for pid in new_panels.intersection(match_ids)
+                    if pid in html_builder.panelapp.metadata
+                },
             )
+
+        # New results carry the exact current-run set. Derive it for older JSON files that predate the field.
+        self.panel_categories: set[int] = set(report_variant.panel_categories) or derived_panel_categories or {0}
+        highest_panelapp = next(
+            (category for category in PANELAPP_DISPLAY_PRIORITY if category in self.panel_categories),
+            None,
+        )
+        self.display_confidences = ([highest_panelapp] if highest_panelapp is not None else []) + (
+            [OMIM_CONFIDENCE] if OMIM_CONFIDENCE in self.panel_categories else []
+        )
+        if not self.display_confidences:
+            self.display_confidences = [0]
+        self.panel_details_json = {
+            str(panel_id): html_builder.panelapp.metadata[panel_id].model_dump(mode='json')
+            for panel_id in sorted(candidate_panel_ids)
+            if panel_id in html_builder.panelapp.metadata
+        }
 
         # Summaries CSQ strings
         if isinstance(self.var_data, SmallVariant):
