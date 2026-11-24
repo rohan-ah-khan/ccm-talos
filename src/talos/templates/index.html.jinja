@@ -139,6 +139,15 @@
                             their PanelApp classification or OMIM is selected.
                         </p>
 
+                        <h5>Local prediction resources</h5>
+                        <p class="mb-0">
+                            When configured, all available SpliceAI2 and AlphaGenome scores are retained for lookup
+                            and reporting. Supporting evidence uses the configured thresholds (defaults: SpliceAI2
+                            summary &gt; 0.1 and AlphaGenome AVI PHRED ≥ 40). Scores that do not pass those thresholds
+                            do not add a supporting category, but remain visible for candidates selected through
+                            other evidence.
+                        </p>
+
                         <h5>Evidence Updates</h5>
                         <p class="mb-1">
                             The "First Tagged" column contains a date - this is either the first date this variant was found in Talos, or the first date the gene was Green on a panel.<br>
@@ -572,20 +581,59 @@
                 if (variantData.info.alpha_missense_max && variantData.info.alpha_missense_max !== 'missing') {
                     html += 'AlphaMissense: ' + parseFloat(variantData.info.alpha_missense_max).toFixed(2) + '<br>';
                 }
-                if (variantData.info.avi_score !== null && variantData.info.avi_score !== 'missing') {
-                    html += 'AG AVI: ' + parseFloat(variantData.info.avi_score).toFixed(2) + '<br>';
+                var aviScore = variantData.info.avi_score;
+                var hasAviScore = aviScore !== undefined && aviScore !== null && aviScore !== 'missing' && !isNaN(parseFloat(aviScore));
+                if (hasAviScore) {
+                    html += 'AlphaGenome AVI PHRED: ' + parseFloat(aviScore).toFixed(2) + '<br>';
                 }
-                if (variantData.info.splice_ai_delta) {
+                var spliceAiScore = variantData.info.splice_ai_delta;
+                var hasSpliceAiScore = spliceAiScore !== undefined && spliceAiScore !== null && spliceAiScore !== 'missing' && !isNaN(parseFloat(spliceAiScore));
+                if (hasSpliceAiScore) {
                     var variantRef = {
                         chrom: rowData.variantCoords.split(':')[0],
                         pos: rowData.variantCoords.split(':')[1],
                         ref: variantData.coordinates ? variantData.coordinates.ref : '',
                         alt: variantData.coordinates ? variantData.coordinates.alt : ''
                     };
-                    html += 'SpliceAI: <a href="' + spliceAiUrl(variantRef) + '" target="_blank">' + parseFloat(variantData.info.splice_ai_delta).toFixed(2) + '</a>';
-                    if (variantData.info.splice_ai_csq && !['missing', 'No_consequence'].includes(variantData.info.splice_ai_csq)) {
+                    var isSpliceAi2 = variantData.info.spliceai2_summary_score !== undefined;
+                    var spliceAiLabel = isSpliceAi2 ? 'SpliceAI2 summary' : 'SpliceAI';
+                    html += spliceAiLabel + ': <a href="' + spliceAiUrl(variantRef) + '" target="_blank">' + parseFloat(spliceAiScore).toFixed(2) + '</a>';
+
+                    if (isSpliceAi2) {
+                        var summaryScore = parseFloat(variantData.info.spliceai2_summary_score);
+                        var spliceAiComponents = [
+                            ['donor gain', 'spliceai2_donor_gain_score', 'spliceai2_donor_gain_distance'],
+                            ['donor loss', 'spliceai2_donor_loss_score', 'spliceai2_donor_loss_distance'],
+                            ['acceptor gain', 'spliceai2_acceptor_gain_score', 'spliceai2_acceptor_gain_distance'],
+                            ['acceptor loss', 'spliceai2_acceptor_loss_score', 'spliceai2_acceptor_loss_distance']
+                        ];
+                        var maxComponents = summaryScore > 0 ? spliceAiComponents.filter(function(component) {
+                            var componentScore = parseFloat(variantData.info[component[1]]);
+                            return !isNaN(componentScore) && Math.abs(componentScore - summaryScore) <= 0.000001;
+                        }) : [];
+
+                        if (maxComponents.length) {
+                            var componentDetails = maxComponents.map(function(component) {
+                                var details = component[0];
+                                var signedDistance = parseInt(variantData.info[component[2]], 10);
+                                if (!isNaN(signedDistance)) {
+                                    details += ', signed offset ' + (signedDistance >= 0 ? '+' : '') + signedDistance + ' bp';
+                                    var variantPosition = parseInt(variantRef.pos, 10);
+                                    if (!isNaN(variantPosition)) {
+                                        details += ', predicted site ' + variantRef.chrom + ':' + (variantPosition + signedDistance);
+                                    }
+                                }
+                                return details;
+                            }).join('; ');
+                            if (variantData.info.spliceai2_strand && variantData.info.spliceai2_strand !== '.') {
+                                componentDetails += ', strand ' + variantData.info.spliceai2_strand;
+                            }
+                            html += ' (' + escapeHtml(componentDetails) + ')';
+                        }
+                    } else if (variantData.info.splice_ai_csq && !['missing', 'No_consequence'].includes(variantData.info.splice_ai_csq)) {
                         html += ' (' + escapeHtml(variantData.info.splice_ai_csq) + ')';
                     }
+                    html += '<br>';
                 }
                 html += '</dd>';
 

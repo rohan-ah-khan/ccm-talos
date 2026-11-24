@@ -47,6 +47,51 @@ participant.
 OMIM panels retain their own MOI and participate in Talos's participant-specific
 MOI validation in the same way as phenotype-matched PanelApp panels.
 
+### Optional SpliceAI2 and AlphaGenome evidence
+
+The HPF preparation launcher can build Echtvar archives from the site-provided
+SpliceAI2 and AlphaGenome SNV resources. Set either source variable near the
+top of `scripts/prepare_hpf.slurm` to an empty string to skip that resource.
+
+Preparation retains every source variant rather than applying a score cutoff:
+
+- SpliceAI2 retains the summary score, strand, four gain/loss scores, and their
+  signed distances. Signed integer encoding preserves negative distances.
+- AlphaGenome retains the AVI PHRED score for every source variant.
+
+The archives are written as `resources/prepared/spliceai2.zip` and
+`resources/prepared/alphagenome.zip`. Annotation uses each archive only when it
+exists. Because annotation occurs before MatrixTable creation, enabling either
+resource requires rerunning annotation from the cohort VCF.
+
+Configure the predictors as AlphaMissense-like supporting evidence with:
+
+```toml
+[RunHailFiltering]
+spliceai2 = 0.1
+avi = 40.0
+
+[ValidateMOI]
+support_categories = ["alphamissense", "spliceai", "avi", "clinvar0star"]
+phenotype_match = ["alphamissense", "spliceai", "avi"]
+```
+
+The thresholds determine whether a score supplies supporting evidence; they do
+not control which scores are retained. Candidates selected through other
+evidence therefore still show lower SpliceAI2 and AlphaGenome scores. The HTML
+report identifies which donor/acceptor gain/loss component produced the
+SpliceAI2 summary maximum and shows its signed distance and predicted genomic
+position.
+
+The SpliceAI2 category uses a strict `> 0.1` comparison; the AlphaGenome
+category uses `>= 40`. SpliceAI2 has a separate configuration key so existing
+deployments using Talos's legacy `spliceai` annotation retain their original
+threshold and behaviour.
+
+The unfiltered archives are expected to be substantially larger and slower to
+prepare than threshold-filtered archives, especially for the 83 GB compressed
+AlphaGenome source.
+
 ### Docker and Singularity compatibility
 
 The Docker image includes `git` so `uv` can install the Git-based SVAFotate

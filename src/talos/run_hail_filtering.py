@@ -440,7 +440,22 @@ def annotate_category_high_impact(mt: hl.MatrixTable) -> hl.MatrixTable:
 
 
 def annotate_category_spliceai(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """Label variant with significant spliceAi scores"""
+    """Label variants with significant SpliceAI scores."""
+    # Local SpliceAI2 archives carry the summary and four component scores in INFO.
+    if 'spliceai2_summary_score' in mt.info:
+        spliceai2_threshold = config_retrieve(['RunHailFiltering', 'spliceai2'], 0.1)
+        return mt.annotate_rows(
+            info=mt.info.annotate(
+                categorybooleanspliceai=hl.if_else(
+                    mt.info.spliceai2_summary_score > spliceai2_threshold,
+                    ONE_INT,
+                    MISSING_INT,
+                ),
+                splice_ai_delta=mt.info.spliceai2_summary_score,
+                splice_ai_csq=MISSING_STRING,
+            ),
+        )
+
     # skip over MTs where this annotation is absent
     if 'splice_ai' not in mt.row_value:
         return mt.annotate_rows(

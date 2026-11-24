@@ -6,6 +6,7 @@ This workflow takes ownership over all the input data preparation steps across b
 The data prepared in this workflow is:
 
 - AlphaMissense data, reformatted into a HailTable
+- Optional local SpliceAI2 and AlphaGenome data, reformatted for Echtvar
 - PanelApp data, freshly downloaded
 - ClinVar data, freshly downloaded and reformatted into Hail Tables
 - Mane data, downloaded and reformatted
@@ -19,6 +20,8 @@ include { CreateRoiFromGff3 } from './nextflow/modules/prep/CreateRoiFromGff3/ma
 include { DownloadClinVarFiles } from './nextflow/modules/prep/DownloadClinVarFiles/main'
 include { DownloadPanelApp } from './nextflow/modules/prep/DownloadPanelApp/main'
 include { EncodeAlphaMissense } from './nextflow/modules/prep/EncodeAlphaMissense/main'
+include { EncodeAlphaGenome } from './nextflow/modules/prep/EncodeAlphaGenome/main'
+include { EncodeSpliceAI2 } from './nextflow/modules/prep/EncodeSpliceAI2/main'
 include { EncodeMitimpact } from './nextflow/modules/prep/EncodeMitimpact/main'
 include { EncodeMitotip } from './nextflow/modules/prep/EncodeMitotip/main'
 include { EncodeNapogee } from './nextflow/modules/prep/EncodeNapogee/main'
@@ -49,6 +52,24 @@ workflow {
         ch_alphamissense_zip = EncodeAlphaMissense.out
     } else {
         ch_alphamissense_zip = channel.fromPath(params.alphamissense_zip)
+    }
+
+    // Optional site-provided sources are encoded once without score filtering.
+    ch_prediction_vcf_header = channel.fromPath(
+        "${projectDir}/src/talos/vcf_headers/am_header.txt",
+        checkIfExists: true,
+    ).first()
+
+    if (params.spliceai2_tsv && !file(params.spliceai2_zip).exists()) {
+        ch_spliceai2_tsv = channel.fromPath(params.spliceai2_tsv, checkIfExists: true)
+        ch_spliceai2_config = channel.fromPath("${projectDir}/echtvar/spliceai2_config.json", checkIfExists: true)
+        EncodeSpliceAI2(ch_spliceai2_tsv, ch_spliceai2_config, ch_prediction_vcf_header)
+    }
+
+    if (params.alphagenome_tsv && !file(params.alphagenome_zip).exists()) {
+        ch_alphagenome_tsv = channel.fromPath(params.alphagenome_tsv, checkIfExists: true)
+        ch_alphagenome_config = channel.fromPath("${projectDir}/echtvar/alphagenome_config.json", checkIfExists: true)
+        EncodeAlphaGenome(ch_alphagenome_tsv, ch_alphagenome_config, ch_prediction_vcf_header)
     }
 
     // generate/format the various Mitochondrial annotation sources

@@ -99,13 +99,13 @@ exomiser_rank_threshold = 2
 
 # for these categories, require a phenotype-gene match
 # this is the final part of the Category name, e.g. categorydetailspm5 is "pm5", and categorybooleansv1 is "sv1"
-phenotype_match = ['alphamissense']
+phenotype_match = ['alphamissense', 'spliceai', 'avi']
 
 # all categories in this list are treated as 'support' i.e. can appear as the second-hit, but will not independently be
 # reported. Comp-het formations of two support variants are also removed
 # all categories not in this list are treated as fully important
 # the values here can either be the category ID (3, 6) or the longer term (e.g. "AlphaMissense")
-support_categories = ['alphamissense', 'clinvar0star']
+support_categories = ['alphamissense', 'spliceai', 'avi', 'clinvar0star']
 
 # Optional 'super logging' mode. When enabled, every variant filtered out by the MOI checks (frequency,
 # per-sample, family, comp-het partner) is recorded as one JSON line in super_logging_path. Off by default.
@@ -127,6 +127,10 @@ af_semi_rare = 0.01
 callset_af_sv_recessive = 0.03
 critical_csq = [ "frameshift", "splice_acceptor", "splice_donor", "start_lost", "stop_gained", "stop_lost",]
 spliceai = 0.5
+# SpliceAI2 summary-score threshold used for supporting evidence. All scores remain available for reporting.
+spliceai2 = 0.1
+# AlphaGenome AVI PHRED threshold used for supporting evidence. Scores below this remain available for reporting.
+avi = 40.0
 am_pathogenicity = 0.564
 minimum_depth = 10
 heteroplasmy_min = 0.2

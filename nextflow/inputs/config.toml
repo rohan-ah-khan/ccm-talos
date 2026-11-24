@@ -40,6 +40,8 @@ critical_csq = [ "frameshift", "splice_acceptor", "splice_donor", "start_lost", 
 max_parent_ab = 0.05
 minimum_depth = 10
 spliceai = 0.5
+spliceai2 = 0.1
+avi = 40.0
 csq_string = [ "consequence", "gene_id", "gene", "transcript", "mane_id", "mane", "biotype", "dna_change", "amino_acid_change", "codon", "ensp", "am_class", "am_pathogenicity",]
 min_alt_depth = 5
 am_pathogenicity = 0.564
@@ -97,11 +99,11 @@ ignore_categories = []
 
 # categories where a variant can 'support' another variant, e.g. Comp-Het, but a variant which only has categories in
 # this list will not feature as a homozygous variant or dominant single hit
-support_categories = ["alphamissense", "clinvar0star"]
+support_categories = ["alphamissense", "spliceai", "avi", "clinvar0star"]
 
 # variants where all applied categories are in this list are removed from the report unless the gene or variant is
 # flagged as being a good phenotypic fit for the specific case
-phenotype_match = ["alphamissense"]
+phenotype_match = ["alphamissense", "spliceai", "avi"]
 
 # un-comment this to apply a minimum GQ to all samples in the trio, including WT. This will reduce de Novo prediciton
 # if data was merged from single-sample VCFs (WTs/absent from single sample VCF will be inserted as WT/GQ=0)
