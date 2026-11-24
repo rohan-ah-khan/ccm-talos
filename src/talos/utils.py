@@ -35,6 +35,7 @@ from talos.models import (
     PanelApp,
     ReportVariant,
     ResultData,
+    SampleCallData,
     ShortTandemRepeat,
     SmallVariant,
     StructuralVariant,
@@ -532,9 +533,75 @@ def create_str_variant(
     )
 
 
+def _call_metric_values(var: 'cyvcf2.Variant', attribute: str, sample_count: int) -> list[Any]:
+    """Return a cyvcf2 per-sample FORMAT metric, or all-missing values if the field is absent."""
+    try:
+        values = getattr(var, attribute)
+    except (AttributeError, KeyError, TypeError):
+        return [None] * sample_count
+    if values is None:
+        return [None] * sample_count
+    return list(values)
+
+
+def _valid_call_number(value: Any) -> bool:
+    """Identify real, non-negative FORMAT values (cyvcf2 uses negative values for missing)."""
+    if value is None:
+        return False
+    try:
+        return not isnan(value) and value >= 0
+    except TypeError:
+        return False
+
+
+def extract_sample_calls(
+    var: 'cyvcf2.Variant',
+    samples: list[str],
+    selected_samples: set[str],
+) -> dict[str, SampleCallData]:
+    """
+    Extract display-only AD/DP/GQ metrics for the selected samples from one biallelic VCF row.
+
+    Args:
+        var (cyvcf2.Variant): the variant row
+        samples (list[str]): all sample IDs in the VCF, in column order
+        selected_samples (set[str]): the samples to retain metrics for
+
+    Returns:
+        dict of sample ID to SampleCallData; missing FORMAT values are recorded as None
+    """
+    sample_count = len(samples)
+    ref_depths = _call_metric_values(var, 'gt_ref_depths', sample_count)
+    alt_depths = _call_metric_values(var, 'gt_alt_depths', sample_count)
+    total_depths = _call_metric_values(var, 'gt_depths', sample_count)
+    genotype_qualities = _call_metric_values(var, 'gt_quals', sample_count)
+
+    calls: dict[str, SampleCallData] = {}
+    for index, sample in enumerate(samples):
+        if sample not in selected_samples:
+            continue
+
+        ref_depth = ref_depths[index]
+        alt_depth = alt_depths[index]
+        ad = (
+            [int(ref_depth), int(alt_depth)]
+            if _valid_call_number(ref_depth) and _valid_call_number(alt_depth)
+            else None
+        )
+        total_depth = total_depths[index]
+        dp = int(total_depth) if _valid_call_number(total_depth) else (sum(ad) if ad else None)
+        genotype_quality = genotype_qualities[index]
+        gq = int(genotype_quality) if _valid_call_number(genotype_quality) else None
+
+        calls[sample] = SampleCallData(ad=ad, dp=dp, gq=gq)
+
+    return calls
+
+
 def create_small_variant(
     var: 'cyvcf2.Variant',
     samples: list[str],
+    family_members_by_sample: dict[str, set[str]] | None = None,
 ) -> SmallVariant | None:
     """Takes a small variant and creates a Model from it."""
 
@@ -607,6 +674,14 @@ def create_small_variant(
     if not (any(info[cat] for cat in boolean_categories) or any(info[cat] for cat in sample_categories)):
         return None
 
+    # Retain display-only call metrics for carriers and their family members (so WT relatives can be shown too).
+    # Restricted to families containing a carrier.
+    call_samples = set(variant_samples)
+    if family_members_by_sample:
+        for sample in variant_samples:
+            call_samples.update(family_members_by_sample.get(sample, {sample}))
+    sample_calls = extract_sample_calls(var=var, samples=samples, selected_samples=call_samples)
+
     transcript_consequences = extract_csq(csq_contents=info.pop('csq', ''))
 
     return SmallVariant(
@@ -618,6 +693,7 @@ def create_small_variant(
         sample_categories=sample_categories,
         ignored_categories=ignored_categories,
         support_categories=get_categories_translated(),
+        sample_calls=sample_calls,
         phased=phased,
         alt_depths=alt_depths,
         depths=depths,
@@ -692,6 +768,7 @@ def gather_gene_dict_from_contig(
     contig: str,
     variant_sources: dict[str, 'cyvcf2.VCFReader'],
     panelapp: PanelApp,
+    family_members_by_sample: dict[str, set[str]] | None = None,
 ) -> GeneDict:
     """
     takes a cyvcf2.VCFReader instance, and a specified chromosome
@@ -704,6 +781,8 @@ def gather_gene_dict_from_contig(
         variant_sources (): dict mapping each variant type to a VCF reader instance
                             known types: small, sv, mito (chrM only), str
         panelapp (PanelApp): PanelApp details parsed for this run
+        family_members_by_sample (dict): sample ID -> all sample IDs in that family, used to retain
+                                         AD/DP/GQ for relatives of carriers (for display only)
 
     Returns:
         A lookup in the form
@@ -729,7 +808,13 @@ def gather_gene_dict_from_contig(
     # iterate over all variants on this contig and store by unique key
     small_samples = variant_sources['small'].samples
     for variant in variant_sources['small'](contig):
-        if (small_variant := create_small_variant(var=variant, samples=small_samples)) is None:
+        if (
+            small_variant := create_small_variant(
+                var=variant,
+                samples=small_samples,
+                family_members_by_sample=family_members_by_sample,
+            )
+        ) is None:
             continue
 
         if small_variant.coordinates.string_format in blacklist:
@@ -769,7 +854,11 @@ def gather_gene_dict_from_contig(
         mito_samples = variant_sources['mito'].samples
         mito_variants = 0
         for variant in variant_sources['mito'](contig):
-            if mito_var := create_small_variant(var=variant, samples=mito_samples):
+            if mito_var := create_small_variant(
+                var=variant,
+                samples=mito_samples,
+                family_members_by_sample=family_members_by_sample,
+            ):
                 mito_variants += 1
                 contig_dict[mito_var.info['gene_id']].append(mito_var)
 

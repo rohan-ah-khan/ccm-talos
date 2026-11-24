@@ -8,6 +8,7 @@
     data-genes="{{variant.genes|map('join', ':')|join(',')|e}}"
     data-variant-data='{{variant.var_data_json|tojson}}'
     data-genotypes='{{variant.genotypes_json|tojson}}'
+    data-sample-calls='{{variant.sample_calls_json|tojson}}'
     data-phenotypes='{{sample.phenotypes_json|tojson}}'
     data-panel-details='{{variant.panel_details_json|tojson}}'
     data-family-members='{{sample.family_members_json|tojson}}'
@@ -46,6 +47,14 @@
         {% endif %}
         <br>
         {{ variant.change|replace("->", ">")|e }}
+        {% if variant.var_type == 'SmallVariant' and variant.proband_call %}
+        {% set call = variant.proband_call %}
+        <br>
+        <small class="text-muted">
+            Alt/DP: {{ call.ad[1] if call.ad is not none else 'NA' }}/{{ call.dp if call.dp is not none else 'NA' }}
+            | GQ: {{ call.gq if call.gq is not none else 'NA' }}
+        </small>
+        {% endif %}
         {% if variant.var_type == 'SmallVariant' and variant.var_data.info %}
         {% set gnomad_url = 'https://gnomad.broadinstitute.org/variant/' ~ (variant|urlencode) ~ '?dataset=gnomad_r4' %}
         <br>
