@@ -617,6 +617,9 @@ class Variant:
 
         self.reasons = report_variant.reasons
         self.genotypes = report_variant.genotypes
+        # per-family-member AD/DP/GQ (small variants only; empty for older results), and the proband's own call
+        self.sample_calls = report_variant.sample_calls
+        self.proband_call = self.sample_calls.get(report_variant.sample)
         self.ext_labels = ext_labels
         # add the phenotype match date and HPO term id/labels
         self.phenotype_match_date = report_variant.date_of_phenotype_match
@@ -732,6 +735,9 @@ class Variant:
 
         # Pre-serialize other potentially complex objects
         self.genotypes_json = dict(self.genotypes) if hasattr(self, 'genotypes') else {}
+        self.sample_calls_json = {
+            sample_id: call.model_dump(mode='json') for sample_id, call in self.sample_calls.items()
+        }
         self.support_vars_json = []
         if hasattr(self, 'support_vars') and self.support_vars:
             for var_string in self.support_vars:

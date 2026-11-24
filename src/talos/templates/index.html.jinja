@@ -483,6 +483,7 @@
             var panelDetails = rowData.panelDetails || {};
             var familyMembers = rowData.familyMembers || {};
             var familyDisplay = rowData.familyDisplay || {};
+            var sampleCalls = rowData.sampleCalls || {};
             var supportVars = rowData.supportVars || [];
         var transcriptConsequences = rowData.transcriptConsequences || [];
 
@@ -755,7 +756,17 @@
                     var sex = member.sex && member.sex.value ? member.sex.value : member.sex;
                     var affected = member.affected;
                     html += pedSymbol(sex, affected) + ' ';
-                    html += escapeHtml(familyDisplay[sampleId]) + ' - ' + escapeHtml(genotypes[sampleId]) + '<br>';
+                    html += escapeHtml(familyDisplay[sampleId]) + ' - ' + escapeHtml(genotypes[sampleId]);
+                    var call = sampleCalls[sampleId];
+                    if (call) {
+                        var callDetails = [
+                            'AD: ' + (Array.isArray(call.ad) ? call.ad.join(',') : 'NA'),
+                            'DP: ' + (call.dp !== undefined && call.dp !== null ? String(call.dp) : 'NA'),
+                            'GQ: ' + (call.gq !== undefined && call.gq !== null ? String(call.gq) : 'NA')
+                        ];
+                        html += ' | ' + escapeHtml(callDetails.join(' | '));
+                    }
+                    html += '<br>';
                 }
             });
             html += '</dd>';
@@ -903,6 +914,7 @@
                     genes: tr.attr('data-genes') || '',
                     variantData: parseDataAttribute(tr, 'data-variant-data', {}),
                     genotypes: parseDataAttribute(tr, 'data-genotypes', {}),
+                    sampleCalls: parseDataAttribute(tr, 'data-sample-calls', {}),
                     phenotypes: parseDataAttribute(tr, 'data-phenotypes', []),
                     panelDetails: parseDataAttribute(tr, 'data-panel-details', {}),
                     familyMembers: parseDataAttribute(tr, 'data-family-members', {}),

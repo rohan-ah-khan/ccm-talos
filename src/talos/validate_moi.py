@@ -529,6 +529,12 @@ def main(
             ped.set_participants(ped.as_singletons())
             ped.set_participants(ped.get_affected_members())
 
+        # Display-only AD/DP/GQ is retained for the relatives of each carrier, not for every cohort member
+        family_members_by_sample = {
+            member.sample_id: {relative.sample_id for relative in ped.by_family[member.family_id]}
+            for member in ped.participants.values()
+        }
+
         # set up the inheritance checks
         moi_lookup = set_up_moi_filters(panelapp_data=panelapp, pedigree=ped)
 
@@ -539,6 +545,7 @@ def main(
                 contig=contig,
                 variant_sources=source_vcfs,
                 panelapp=panelapp,
+                family_members_by_sample=family_members_by_sample,
             )
 
             result_list.extend(

@@ -17,10 +17,14 @@ process NormaliseVcf {
     # multiple ways to reach this point, some do & some don't strictly index
     tabix ${vcf}
     bcftools norm \
-    	-m -any \
-    	-f ${ref_genome} \
+        -m -any \
+        -f ${ref_genome} \
         -Ou ${vcf} \
         --no-version | \
+    bcftools sort \
+        -m 256M \
+        -T ./sort-tmp \
+        -Ou | \
     bcftools +fill-tags \
         -Oz \
         --no-version \

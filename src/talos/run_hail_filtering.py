@@ -924,7 +924,8 @@ def new_green_genes_from_panelapp(panel_data: PanelApp) -> hl.SetExpression:
 
     new_genes = {ensg for ensg, details in panel_data.genes.items() if getattr(details, 'new', None)}
     logger.info(f'Extracted {len(new_genes)} new genes')
-    return hl.literal(new_genes)
+    # an explicit type is required - Hail cannot infer the element type of an empty set
+    return hl.literal(new_genes, dtype=hl.tset(hl.tstr))
 
 
 def subselect_mt_to_pedigree(mt: hl.MatrixTable, ped_samples: set[str]) -> hl.MatrixTable:

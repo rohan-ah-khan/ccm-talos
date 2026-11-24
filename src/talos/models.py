@@ -8,7 +8,7 @@ from itertools import pairwise
 from typing import Any
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from talos.liftover.lift_1_0_0_to_1_0_1 import resultdata as rd_100_to_101
 from talos.liftover.lift_1_0_2_to_1_0_3 import resultdata as rd_102_to_103
@@ -254,6 +254,15 @@ class VariantCommon(BaseModel):
         return True
 
 
+class SampleCallData(BaseModel):
+    """Per-sample call metrics retained for display alongside reportable small variants."""
+
+    # [ref depth, alt depth]
+    ad: list[int] | None = None
+    dp: int | None = None
+    gq: int | None = None
+
+
 class SmallVariant(VariantCommon):
     """
     a representation of a small variant
@@ -264,6 +273,8 @@ class SmallVariant(VariantCommon):
     everything as a SmallVariant
     """
 
+    # display-only call metrics for carriers and their family members (including WT relatives)
+    sample_calls: dict[str, SampleCallData] = Field(default_factory=dict, exclude=True)
     alt_depths: dict[str, int] = Field(default_factory=dict, exclude=True)
     depths: dict[str, int] = Field(default_factory=dict, exclude=True)
     ab_ratios: dict[str, float] = Field(default_factory=dict, exclude=True)
@@ -394,6 +405,8 @@ class ReportVariant(BaseModel):
     flags: set[str] = Field(default_factory=set)
     gene: str = Field(default_factory=str)
     genotypes: dict[str, str] = Field(default_factory=dict)
+    # AD/DP/GQ for each family member in `genotypes`, small variants only
+    sample_calls: dict[str, SampleCallData] = Field(default_factory=dict)
     labels: set[str] = Field(default_factory=set)
     panels: ReportPanel = Field(default_factory=ReportPanel)
     phenotypes: list[HpoTerm] = Field(default_factory=list)
@@ -426,6 +439,17 @@ class ReportVariant(BaseModel):
     # defaulting to a specific date means any non-green classifications in results until now won't be flagged as
     # newly-green correctly
     newly_green_date: str = Field(default_factory=str)
+
+    @model_validator(mode='after')
+    def populate_family_sample_calls(self) -> 'ReportVariant':
+        """Copy the transient per-sample call metrics for this family into the serialised result."""
+        if not self.sample_calls and isinstance(self.var_data, SmallVariant):
+            self.sample_calls = {
+                sample: self.var_data.sample_calls[sample]
+                for sample in self.genotypes
+                if sample in self.var_data.sample_calls
+            }
+        return self
 
     def __eq__(self, other):
         """
