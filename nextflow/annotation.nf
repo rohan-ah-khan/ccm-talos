@@ -9,6 +9,7 @@ It requires a single VCF, which can be single- or multi-sample. This is then ann
 The specific annotations are:
 
 - gnomAD v4.1 frequencies and alphamissense annotations, applied to the joint VCF using echtvar
+- optional SpliceAI2 and AlphaGenome annotations, also applied using Echtvar when their archives exist
 - Transcript consequences, using BCFtools annotate
 - MANE trancript IDs and corresponding ENSP IDs, applied using Hail
 */
@@ -16,6 +17,7 @@ The specific annotations are:
 include { AnnotateCsqWithBcftools } from './modules/annotation/AnnotateCsqWithBcftools/main'
 include { AnnotatedVcfIntoMatrixTable } from './modules/annotation/AnnotatedVcfIntoMatrixTable/main'
 include { AnnotateWithEchtvar } from './modules/annotation/AnnotateWithEchtvar/main'
+include { AnnotateWithOptionalEchtvar } from './modules/annotation/AnnotateWithOptionalEchtvar/main'
 include { MergeVcfsWithBcftools } from './modules/annotation/MergeVcfsWithBcftools/main'
 include { NormaliseVcf } from './modules/annotation/NormaliseVcf/main'
 include { SplitVcf } from './modules/annotation/SplitVcf/main'
@@ -106,15 +108,32 @@ workflow ANNOTATION {
         ch_ref_genome,
     )
 
-	AnnotateWithEchtvar(
+    AnnotateWithEchtvar(
         NormaliseVcf.out,
         ch_gnomad_zip,
         ch_alphamissense_zip,
     )
 
+    // Apply whichever optional local prediction archives have been prepared.
+    def optional_echtvar_paths = [params.spliceai2_zip, params.alphagenome_zip]
+        .findAll { annotation_path -> annotation_path && file(annotation_path).exists() }
+
+    if (optional_echtvar_paths) {
+        ch_optional_echtvar_zips = channel.value(
+            optional_echtvar_paths.collect { annotation_path -> file(annotation_path) },
+        )
+        AnnotateWithOptionalEchtvar(
+            AnnotateWithEchtvar.out,
+            ch_optional_echtvar_zips,
+        )
+        ch_all_echtvar = AnnotateWithOptionalEchtvar.out
+    } else {
+        ch_all_echtvar = AnnotateWithEchtvar.out
+    }
+
     // annotate transcript consequences with bcftools csq
     AnnotateCsqWithBcftools(
-        AnnotateWithEchtvar.out,
+        ch_all_echtvar,
         ch_gff,
         ch_ref_genome,
     )

@@ -1,0 +1,12 @@
+[
+    {"field": "spliceai2_strand", "alias": "spliceai2_strand", "missing_string": "."},
+    {"field": "spliceai2_donor_gain_score", "alias": "spliceai2_donor_gain_score", "missing_value": -2147483648, "multiplier": 2000000},
+    {"field": "spliceai2_donor_gain_distance", "alias": "spliceai2_donor_gain_distance", "missing_value": -2147483648, "zigzag": true},
+    {"field": "spliceai2_donor_loss_score", "alias": "spliceai2_donor_loss_score", "missing_value": -2147483648, "multiplier": 2000000},
+    {"field": "spliceai2_donor_loss_distance", "alias": "spliceai2_donor_loss_distance", "missing_value": -2147483648, "zigzag": true},
+    {"field": "spliceai2_acceptor_gain_score", "alias": "spliceai2_acceptor_gain_score", "missing_value": -2147483648, "multiplier": 2000000},
+    {"field": "spliceai2_acceptor_gain_distance", "alias": "spliceai2_acceptor_gain_distance", "missing_value": -2147483648, "zigzag": true},
+    {"field": "spliceai2_acceptor_loss_score", "alias": "spliceai2_acceptor_loss_score", "missing_value": -2147483648, "multiplier": 2000000},
+    {"field": "spliceai2_acceptor_loss_distance", "alias": "spliceai2_acceptor_loss_distance", "missing_value": -2147483648, "zigzag": true},
+    {"field": "spliceai2_summary_score", "alias": "spliceai2_summary_score", "missing_value": -2147483648, "multiplier": 2000000}
+]
