@@ -32,7 +32,8 @@ from talos.models import (
     ParticipantHPOPanels,
     StrDetail,
 )
-from talos.utils import read_json_from_path
+from talos.omim_panel import OMIM_CONFIDENCE
+from talos.utils import GREEN_CONFIDENCE, read_json_from_path
 
 PANELAPP_BASE_PANEL = 137
 X_CHROMOSOME = {'X'}
@@ -277,7 +278,11 @@ def fetch_genes_for_panels(panelapp_data: PanelApp, cached_panelapp: DownloadedP
             eligible_panels = {
                 panel_id
                 for panel_id, panel_detail in obj_data.panels.items()
-                if panel_detail.confidence >= MIN_GENE_CONFIDENCE
+                if panel_detail.confidence == OMIM_CONFIDENCE
+                or (
+                    0 <= panel_detail.confidence <= GREEN_CONFIDENCE
+                    and panel_detail.confidence >= MIN_GENE_CONFIDENCE
+                )
             }
             if not (panel_intersection := eligible_panels.intersection(full_set_of_panels)):
                 continue

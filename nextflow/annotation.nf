@@ -36,11 +36,19 @@ workflow ANNOTATION {
     }
     ch_alphamissense_zip = channel.fromPath(params.alphamissense_zip, checkIfExists: true).first()
 
-    def current_month = new java.util.Date().format('yyyy-MM')
-    String panelapp_path = "${params.processed_annotations}/panelapp_${current_month}.json"
+    def evidence_date = params.evidence_date ? params.evidence_date.toString() : null
+    if (evidence_date) {
+        try {
+            java.time.LocalDate.parse(evidence_date)
+        } catch (java.time.format.DateTimeParseException ignored) {
+            error "--evidence_date must be a real date in YYYY-MM-DD format; received '${evidence_date}'"
+        }
+    }
+    def evidence_month = evidence_date ? evidence_date.substring(0, 7) : new java.util.Date().format('yyyy-MM')
+    String panelapp_path = "${params.processed_annotations}/panelapp_${evidence_month}.json"
 
     if (!file(panelapp_path).exists()) {
-        println "PanelApp data for this month (${panelapp_path}) doesn't exist, run the Talos Prep workflow"
+        println "PanelApp data for this evidence month (${panelapp_path}) doesn't exist, run the Talos Prep workflow"
         exit 1
     }
     ch_panelapp = channel.fromPath(panelapp_path, checkIfExists: true).first()

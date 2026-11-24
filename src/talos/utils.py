@@ -33,6 +33,7 @@ from talos.models import (
     Coordinates,
     DownloadedPanelApp,
     PanelApp,
+    ReportVariant,
     ResultData,
     ShortTandemRepeat,
     SmallVariant,
@@ -40,6 +41,7 @@ from talos.models import (
     lift_up_model_version,
     translate_category,
 )
+from talos.omim_panel import OMIM_CONFIDENCE
 from talos.static_values import get_evidence_date
 
 if TYPE_CHECKING:
@@ -86,6 +88,13 @@ STR_RANGE = re.compile(r'min(?P<min>[0-9]+)max(?P<max>[0-9]+)$')
 
 # numerical confidence for a green Gene in PanelApp
 GREEN_CONFIDENCE = 3
+
+
+def panelapp_confidence(variant: ReportVariant) -> int:
+    """Return the PanelApp-only confidence, including compatibility with older result JSON."""
+    if variant.max_panelapp_confidence is not None:
+        return variant.max_panelapp_confidence
+    return variant.max_confidence if variant.max_confidence <= GREEN_CONFIDENCE else 0
 
 
 def parse_mane_json_to_dict(mane_json: str) -> dict:
@@ -970,14 +979,19 @@ def annotate_variant_dates_using_prior_results(results: ResultData, previous_res
                     old_var.clinvar_stars is None or new_var.clinvar_stars > old_var.clinvar_stars,
                 )
 
-            # if the latest event has an upgraded panel confidence, today's date drives the discovery date.
-            # we always want to recognise a jump to green, Amber/Red panel usage depends on local appetite
+            # If the latest event has an upgraded PanelApp confidence, today's date drives the discovery date.
+            # OMIM is displayed as confidence 4, but is a source category rather than a PanelApp confidence.
+            old_panelapp_confidence = panelapp_confidence(old_var)
+            new_panelapp_confidence = panelapp_confidence(new_var)
 
             # this is a placeholder applied during liftover, we replace this value with the current confidence level
-            if old_var.max_confidence == -1:
+            if old_panelapp_confidence == -1:
                 pass
 
-            elif (new_var.max_confidence > old_var.max_confidence) and (new_var.max_confidence >= GREEN_CONFIDENCE):
+            elif (
+                new_panelapp_confidence == GREEN_CONFIDENCE
+                and new_panelapp_confidence > old_panelapp_confidence
+            ):
                 # if the gene rating bump means this gene is now Green, bump confidence
                 new_var.confidence_increase = True
                 evidence_dates.append(get_evidence_date())
@@ -987,9 +1001,11 @@ def annotate_variant_dates_using_prior_results(results: ResultData, previous_res
 
                 new_var.newly_green_date = get_evidence_date()
 
-            # take the highest confidence when building the history
-            # outside chance a gene going green->amber would be presented as Green due to this...
-            new_var.max_confidence = max(old_var.max_confidence, new_var.max_confidence)
+            # Preserve the highest historical PanelApp confidence, as before, without carrying an old OMIM category
+            # into a run where the candidate no longer has current OMIM support.
+            new_var.max_panelapp_confidence = max(old_panelapp_confidence, new_panelapp_confidence)
+            if new_var.max_confidence != OMIM_CONFIDENCE:
+                new_var.max_confidence = new_var.max_panelapp_confidence
 
             # we previously had a phenotype match date, carry it forward
             if old_pheno := old_var.date_of_phenotype_match:

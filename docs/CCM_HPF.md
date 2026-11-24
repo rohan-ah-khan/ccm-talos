@@ -16,6 +16,37 @@ The original URLs remain as comments, and explicit filenames preserve
 compatibility with the Talos configuration. These replacements were validated
 successfully on HPF.
 
+### PanelApp and OMIM integration
+
+The preparation workflow modifies the PanelApp cache with OMIM disease
+panels built from the closest non-future HPO release. It keeps the unmodified
+PanelApp download as `panelapp_YYYY-MM.json.bk` and writes the combined PanelApp
+and OMIM cache to the usual `panelapp_YYYY-MM.json` path, so downstream Talos
+inputs do not change. When `--evidence_date` is supplied, the cache uses the
+latest version on that date of each panel exposed by the PanelApp API, plus the
+closest non-future HPO release, and is named for the evidence month, matching
+the dated ClinVar resources.
+
+OMIM gene-panel associations use confidence `4`. This is a report category and
+source marker, not a confidence higher than PanelApp Green (`3`). The cohort
+panel parser always admits OMIM associations alongside PanelApp associations
+that meet `GeneratePanelData.confidence_level`; the default threshold of `3`
+therefore includes PanelApp Green and OMIM. Talos retains a separate
+PanelApp-only confidence for Green-history tracking, so OMIM support does not
+trigger a "newly Green" event or persist after that support is removed.
+
+The HTML confidence filter includes `🟣 OMIM` in addition to Green, Amber, Red,
+and Unknown. A mixed result displays its highest PanelApp classification and
+the OMIM marker side by side (for example, `🟢🟣`); a result supported by only
+one source displays only that source's marker. Filtering is multi-label, so a
+mixed PanelApp/OMIM result remains visible when either applicable filter is
+selected. Expanded result details contain only panels relevant to that
+candidate gene rather than every synthetic OMIM panel assigned to the
+participant.
+
+OMIM panels retain their own MOI and participate in Talos's participant-specific
+MOI validation in the same way as phenotype-matched PanelApp panels.
+
 ### Docker and Singularity compatibility
 
 The Docker image includes `git` so `uv` can install the Git-based SVAFotate
@@ -157,7 +188,7 @@ export TALOS_BASE=/path/to/talos
 ### Run annotation preparation
 
 Submit the preparation workflow through Slurm. With no date argument, it uses
-the current ClinVar release:
+current evidence resources:
 
 ```bash
 export TALOS_BASE=/path/to/talos
@@ -167,15 +198,19 @@ mkdir -p "$TALOS_BASE/logs/preparation"
 sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" scripts/prepare_hpf.slurm
 ```
 
-The launcher writes prepared resources in `resources/prepared`. To prepare a retrospective ClinVar snapshot, pass an evidence date in `YYYY-MM-DD` format. For example:
+The launcher writes prepared resources in `resources/prepared`. To prepare
+retrospective ClinVar, PanelApp, and OMIM/HPO resources, pass an evidence date
+in `YYYY-MM-DD` format. For example:
 
 ```bash
 sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" \
   scripts/prepare_hpf.slurm 2023-10-01
 ```
 
-The date selects the ClinVar snapshot. Supply the same date to the later Talos
-analysis to give its evidence retrospective timestamps.
+The date selects the ClinVar snapshot, historical PanelApp versions, and the
+closest non-future HPO release used for OMIM panels. Supply the same date to the
+later Talos analysis so it consumes the dated resources and uses retrospective
+evidence timestamps.
 
 
 ### Run Talos analysis

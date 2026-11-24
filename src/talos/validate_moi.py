@@ -36,6 +36,7 @@ from talos.models import (
     translate_category,
 )
 from talos.moi_tests import MOIRunner
+from talos.omim_panel import OMIM_CONFIDENCE, PANEL_ID_OFFSET
 from talos.static_values import get_evidence_date
 from talos.unified_panelapp_parser import get_simple_moi
 from talos.utils import (
@@ -291,8 +292,11 @@ def filter_results_to_panels(
         # the custom panel (0) is never in a participant's panel list, so it arrives via the forced set
         # a panel with no recorded confidence contributes 0; no matching panels at all also gives 0
         applied_panels = all_matches_for_this_gene | forced_panels_for_this_gene
-        each_event.max_confidence = max(
-            (panelapp_content.panel_confidences.get(panel, 0) for panel in applied_panels),
+        applied_confidences = [panelapp_content.panel_confidences.get(panel, 0) for panel in applied_panels]
+        each_event.max_confidence = max(applied_confidences, default=0)
+        each_event.panel_categories = {confidence for confidence in applied_confidences if confidence > 0} or {0}
+        each_event.max_panelapp_confidence = max(
+            (confidence for confidence in applied_confidences if 0 <= confidence < OMIM_CONFIDENCE),
             default=0,
         )
 
@@ -392,7 +396,9 @@ def prepare_results_shell(
                 panel_details={
                     panel_id: panelapp.metadata[panel_id]
                     for panel_id in sample_panel_data.panels
-                    if panel_id in panelapp.metadata
+                    # Candidate-specific OMIM panels are retained on ReportVariant.panels. Keeping thousands of
+                    # participant-wide synthetic panels here bloats both the full-results JSON and every HTML row.
+                    if panel_id in panelapp.metadata and panel_id < PANEL_ID_OFFSET
                 },
                 solved=bool(participant.sample_id in solved_cases or participant.family_id in solved_cases),
                 present_in_small=participant.sample_id in source_samples['small'],

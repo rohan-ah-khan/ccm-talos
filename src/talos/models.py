@@ -412,6 +412,13 @@ class ReportVariant(BaseModel):
 
     # this will be determined based on the specific panels applied to a participant
     max_confidence: int = Field(default_factory=int)
+    # Current panel classifications/sources supporting this result. PanelApp uses 1-3 and OMIM uses 4.
+    # Keeping every applicable value allows the HTML filters to treat mixed-source results as multi-label.
+    panel_categories: set[int] = Field(default_factory=set)
+    # OMIM uses max_confidence=4 as a report category, but is not part of PanelApp's ordinal RAG scale.
+    # Retain the highest PanelApp-only confidence separately so reanalysis history can still detect a true
+    # Red/Amber -> Green transition when OMIM support is also present.
+    max_panelapp_confidence: int | None = None
     # log whether there was an increase in panel confidence since the last run
     confidence_increase: bool = Field(default=False)
 

@@ -38,7 +38,7 @@ workflow TALOS {
     def evidence_month = evidence_date ? evidence_date.substring(0, 7) : current_month
     def timestamp = new java.util.Date().format('yyyy-MM-dd')
 
-    // check that the requested ClinVar and current PanelApp resources exist
+    // check that the requested ClinVar and PanelApp resources exist
     String current_clinvarbitration_all = "${params.processed_annotations}/clinvarbitration_${evidence_month}.ht"
     String current_clinvarbitration_pm5 = "${params.processed_annotations}/clinvarbitration_${evidence_month}.pm5.ht"
 
@@ -51,10 +51,10 @@ workflow TALOS {
     ch_clinvar_all = channel.fromPath(current_clinvarbitration_all, checkIfExists: true).first()
     ch_clinvar_pm5 = channel.fromPath(current_clinvarbitration_pm5, checkIfExists: true).first()
 
-    String panelapp_path = "${params.processed_annotations}/panelapp_${current_month}.json"
+    String panelapp_path = "${params.processed_annotations}/panelapp_${evidence_month}.json"
 
     if (!file(panelapp_path).exists()) {
-        println "PanelApp data for this month (${panelapp_path}) doesn't exist, run the Talos Prep workflow"
+        println "PanelApp data for this evidence month (${panelapp_path}) doesn't exist, run the Talos Prep workflow"
         exit 1
     }
     ch_panelapp = channel.fromPath(panelapp_path, checkIfExists: true).first()
