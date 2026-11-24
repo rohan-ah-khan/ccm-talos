@@ -16,6 +16,7 @@
     data-support-vars='{{variant.support_vars_json|tojson}}'
     data-transcript-consequences='{{variant.transcript_consequences_json|tojson}}'
     data-has-phenotype="{{ 1 if variant.forced_matches or variant.phenotype_matches or variant.pheno_matches else 0 }}"
+    data-candidate-status="{{ variant.candidate_status }}"
     data-panel-categories="{{ variant.panel_categories|sort|join(',') }}"
 >
     <td style="white-space: nowrap" class="details-control">

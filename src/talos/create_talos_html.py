@@ -246,6 +246,13 @@ class HTMLBuilder:
         self.metadata = results_dict.metadata
         self.panel_names = {panel.name for panel in self.metadata.panels.values()}
 
+        # the evidence date of the run that produced these results - "new"/"updated" are judged against this rather than
+        # today, so rebuilding a report later, or HPOFlagging finishing after midnight, doesn't change the outcome
+        self.run_date: str = (
+            self.metadata.evidence_date or (self.metadata.run_datetime or '')[:10] or get_evidence_date()
+        )
+        logger.info(f'Judging new and updated candidates against run date {self.run_date}')
+
         # Process samples and variants
         self.samples: list[Sample] = []
 
@@ -602,7 +609,11 @@ class Variant:
         self.categories = report_variant.categories
         self.first_tagged: str = report_variant.first_tagged
         self.evidence_updated: str = report_variant.evidence_last_updated
-        self.new_emojis: list[str] = self.assign_new_emojis(vardata=report_variant)
+        # 'new', 'updated' or 'unchanged', plus the emojis explaining any update
+        self.candidate_status, self.new_emojis = self.assign_candidate_status(
+            vardata=report_variant,
+            run_date=html_builder.run_date,
+        )
         self.support_vars = report_variant.support_vars
         self.warning_flags = report_variant.flags
         # these are the panel IDs which are matched based on HPO matching in PanelApp
@@ -792,28 +803,35 @@ class Variant:
         return mane_consequences, mane_hgvsps
 
     @staticmethod
-    def assign_new_emojis(vardata: ReportVariant) -> list[str]:
-        """Create the list of emojis to display, indicating a reason to review."""
+    def assign_candidate_status(vardata: ReportVariant, run_date: str) -> tuple[str, list[str]]:
+        """
+        Classify this candidate relative to the run which produced it, and pick the emojis explaining any update.
+
+        Returns:
+            ('new' | 'updated' | 'unchanged', list of emojis)
+            new: every category was first seen in this run (incl. new samples and runs without history)
+            updated: seen before, and one or more emoji reasons apply this run
+        """
+        if not vardata.categories:
+            return 'unchanged', []
+
+        category_dates = vardata.categories.values()
+
+        # a new candidate needs no emojis
+        if min(category_dates) >= run_date:
+            return 'new', []
+
         display_emojis: list[str] = []
-
-        max_cat_date = max(vardata.categories.values())
-        min_cat_date = min(vardata.categories.values())
-        todays_date = get_evidence_date()
-
-        # this is a new variant, no need for emojis
-        if max_cat_date == todays_date == min_cat_date:
-            return display_emojis
-
         if vardata.confidence_increase:
             display_emojis.append(REASON_EMOJIS['green'])
-        if vardata.date_of_phenotype_match == todays_date:
+        if vardata.date_of_phenotype_match and vardata.date_of_phenotype_match >= run_date:
             display_emojis.append(REASON_EMOJIS['pheno'])
-        if max_cat_date == todays_date:
+        if max(category_dates) >= run_date:
             display_emojis.append(REASON_EMOJIS['new'])
         if vardata.clinvar_increase:
             display_emojis.append(REASON_EMOJIS['clinvar'])
 
-        return display_emojis
+        return ('updated' if display_emojis else 'unchanged'), display_emojis
 
 
 def cli_main():

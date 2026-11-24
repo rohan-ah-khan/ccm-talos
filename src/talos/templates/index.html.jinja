@@ -161,6 +161,16 @@
     🚦 - Newly Green in PanelApp
                             </pre>
                         </p>
+                        <p class="mb-1">
+                            The <b>Candidates</b> filter uses the same information, relative to the run that produced this report:
+                        </p>
+                        <ul class="mb-0">
+                            <li><b>New</b> - first found in this run. This includes every candidate for a participant new to this run, or for a run with no previous results.</li>
+                            <li><b>Updated</b> - found in a previous run, and showing at least one of the emojis above.</li>
+                        </ul>
+                        <p class="mb-0">
+                            A candidate is only new or updated in the run where that change happened. On the next run it is no longer shown as new or updated unless its evidence changes again.
+                        </p>
                     </div>
                 </div>
 
@@ -171,6 +181,14 @@
                             <option value="all" selected>All variants</option>
                             <option value="has">With phenotype match</option>
                             <option value="none">Without phenotype match</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="candidate-status-filter" class="form-label">Candidates</label>
+                        <select id="candidate-status-filter" class="form-select form-select-sm" style="max-width: 260px;">
+                            <option value="all" selected>All Candidates</option>
+                            <option value="new_or_updated">New or Updated Candidates</option>
+                            <option value="new">New Candidates</option>
                         </select>
                     </div>
                     <div>
@@ -446,6 +464,38 @@
 
             if (filterValue === 'none') {
                 return hasPhenotype !== '1';
+            }
+
+            return true;
+        });
+
+        var candidateStatusFilter = $('#candidate-status-filter');
+
+        $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+            if (settings.nTable !== $('#variant-table')[0]) {
+                return true;
+            }
+
+            var filterValue = candidateStatusFilter.val();
+            if (!filterValue || filterValue === 'all') {
+                return true;
+            }
+
+            var aoData = settings.aoData[dataIndex];
+            var rowNode = aoData && aoData.nTr;
+            if (!rowNode) {
+                return true;
+            }
+
+            // 'new', 'updated' or 'unchanged' - see Variant.assign_candidate_status
+            var status = rowNode.getAttribute('data-candidate-status') || 'unchanged';
+
+            if (filterValue === 'new') {
+                return status === 'new';
+            }
+
+            if (filterValue === 'new_or_updated') {
+                return status === 'new' || status === 'updated';
             }
 
             return true;
@@ -930,6 +980,10 @@
         });
 
         phenotypeFilter.on('change', function () {
+            table.draw();
+        });
+
+        candidateStatusFilter.on('change', function () {
             table.draw();
         });
 
