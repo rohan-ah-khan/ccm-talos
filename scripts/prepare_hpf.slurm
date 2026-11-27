@@ -19,10 +19,6 @@ export TALOS_SPARK_DIR="$RUN_TMP/spark"
 RUN_DATE=$(date '+%Y-%m-%d')
 LOG_DIR="$TALOS_BASE/logs/preparation"
 
-# Optional local prediction sources. Set either path to an empty string to skip it.
-SPLICEAI2_SOURCE="/hpf/largeprojects/ccmbio/nhanafi/c4r/downloads/databases/spliceAI2_scores.snv.hg38.tsv.gz"
-ALPHAGENOME_SOURCE="/hpf/largeprojects/ccmbio/nhanafi/c4r/downloads/databases/alphagenome_variant_impact_score_snvs.tsv.gz"
-
 if [[ -n "$EVIDENCE_DATE" && ! "$EVIDENCE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
     echo "Evidence date must use YYYY-MM-DD format: $EVIDENCE_DATE" >&2
     exit 2
@@ -45,22 +41,6 @@ NEXTFLOW_ARGS=(
     -work-dir "$WORK_DIR"
 )
 
-if [[ -n "$SPLICEAI2_SOURCE" ]]; then
-    if [[ ! -r "$SPLICEAI2_SOURCE" ]]; then
-        echo "SpliceAI2 source is not readable: $SPLICEAI2_SOURCE" >&2
-        exit 1
-    fi
-    NEXTFLOW_ARGS+=(--spliceai2_tsv "$SPLICEAI2_SOURCE")
-fi
-
-if [[ -n "$ALPHAGENOME_SOURCE" ]]; then
-    if [[ ! -r "$ALPHAGENOME_SOURCE" ]]; then
-        echo "AlphaGenome source is not readable: $ALPHAGENOME_SOURCE" >&2
-        exit 1
-    fi
-    NEXTFLOW_ARGS+=(--alphagenome_tsv "$ALPHAGENOME_SOURCE")
-fi
-
 if [[ -n "$EVIDENCE_DATE" ]]; then
     NEXTFLOW_ARGS+=(--evidence_date "$EVIDENCE_DATE")
 fi
@@ -78,14 +58,7 @@ test -s "$TALOS_BASE/resources/prepared/panelapp_${EVIDENCE_MONTH}.json"
 test -s "$TALOS_BASE/resources/prepared/panelapp_${EVIDENCE_MONTH}.json.bk"
 test -s "$TALOS_BASE/resources/prepared/mane.json"
 test -s "$TALOS_BASE/resources/prepared/alphamissense.zip"
-
-if [[ -n "$SPLICEAI2_SOURCE" ]]; then
-    test -s "$TALOS_BASE/resources/prepared/spliceai2.zip"
-fi
-
-if [[ -n "$ALPHAGENOME_SOURCE" ]]; then
-    test -s "$TALOS_BASE/resources/prepared/alphagenome.zip"
-fi
+test -s "$TALOS_BASE/resources/container/gatk_4.6.2.0.sif"     # PullGatkImage (hpf.config gatk_container)
 
 rm -r "$RUN_TMP"
 

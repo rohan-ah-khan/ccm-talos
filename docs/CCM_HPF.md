@@ -49,9 +49,10 @@ MOI validation in the same way as phenotype-matched PanelApp panels.
 
 ### Optional SpliceAI2 and AlphaGenome evidence
 
-The HPF preparation launcher can build Echtvar archives from the site-provided
-SpliceAI2 and AlphaGenome SNV resources. Set either source variable near the
-top of `scripts/prepare_hpf.slurm` to an empty string to skip that resource.
+The preparation workflow can build Echtvar archives from the site-provided
+SpliceAI2 and AlphaGenome SNV resources. Their source paths are the
+`spliceai2_tsv` and `alphagenome_tsv` params in `configs/hpf.config`. To skip
+one, set it to `null` there.
 
 Preparation retains every source variant rather than applying a score cutoff:
 
@@ -243,7 +244,9 @@ mkdir -p "$TALOS_BASE/logs/preparation"
 sbatch --export=ALL,TALOS_BASE="$TALOS_BASE" scripts/prepare_hpf.slurm
 ```
 
-The launcher writes prepared resources in `resources/prepared`. To prepare
+The launcher writes prepared resources in `resources/prepared`. If
+`resources/container/gatk_4.6.2.0.sif` is missing, the workflow also pulls it
+for the optional SV pathway (`PullGatkImage`). To prepare
 retrospective ClinVar, PanelApp, and OMIM/HPO resources, pass an evidence date
 in `YYYY-MM-DD` format. For example:
 

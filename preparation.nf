@@ -11,6 +11,7 @@ The data prepared in this workflow is:
 - ClinVar data, freshly downloaded and reformatted into Hail Tables
 - Mane data, downloaded and reformatted
 - BED file representing ROI for all Ensembl genes
+- With Singularity, the GATK image for the optional SV pathway, when gatk_container points at a missing local .sif
 */
 
 nextflow.enable.dsl=2
@@ -28,6 +29,7 @@ include { EncodeNapogee } from './nextflow/modules/prep/EncodeNapogee/main'
 include { MakeClinvarbitrationPm5 } from './nextflow/modules/prep/MakeClinvarbitrationPm5/main'
 include { ResummariseRawSubmissions } from './nextflow/modules/prep/ResummariseRawSubmissions/main'
 include { ParseManeIntoJson } from './nextflow/modules/prep/ParseManeIntoJson/main'
+include { PullGatkImage } from './nextflow/modules/prep/PullGatkImage/main'
 
 
 workflow {
@@ -44,6 +46,13 @@ workflow {
     def evidence_month = evidence_date ? evidence_date.substring(0, 7) : current_month
 
     ch_gff = channel.fromPath(params.ensembl_gff, checkIfExists: true)
+
+    // GATK image for the optional SV pathway. 
+    if (workflow.containerEngine == 'singularity'
+            && params.gatk_container.toString().endsWith('.sif')
+            && !file(params.gatk_container).exists()) {
+        PullGatkImage(params.gatk_image, file(params.gatk_container).name)
+    }
 
     // generate the AlphaMissense HT - long running, stored in a separate folder
     if (!file(params.alphamissense_zip).exists()) {
