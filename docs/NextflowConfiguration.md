@@ -44,7 +44,8 @@ declares an `sv` column, so an SNV-only run does not need any of the reference d
 | `svannotate_noncoding_bed` | Path in `large_files` to the GATK-SV non-coding elements BED                                          |
 | `ref_dict`                 | Path in `processed_annotations` to the sequence dictionary. Generated on the first SV run if absent    |
 | `sv_overlap_fraction`      | Reciprocal overlap fraction required to match an SV against the gnomAD reference. Defaults to `0.5`    |
-| `gatk_container`           | Docker image for GATK SVAnnotate. Pulled from the public registry, not built locally                   |
+| `gatk_container`           | Docker image for GATK SVAnnotate. Pulled from the public registry, not built locally. May instead be a local `.sif` path: with Singularity, `preparation.nf` pulls it from `gatk_image` if missing (HPF does this) |
+| `gatk_image`               | Source of that local `.sif`. Defaults to `docker://broadinstitute/gatk:4.6.2.0`                        |
 | `svafotate_container`      | Docker image for SVAFotate. Built locally — `docker build -f docker/SVAFotate_Dockerfile -t svafotate:0.1.0 .` |
 
 ### Providing the input
